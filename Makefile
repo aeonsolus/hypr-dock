@@ -5,6 +5,8 @@ PROJECT_CONFIG_DIR = configs/default
 
 EXECUTABLE_DOCK = hypr-dock
 EXECUTABLE_ALTTAB = hypr-alttab
+EXECUTABLE_CTL = hypr-dockctl
+EXECUTABLE_SETTINGS = hypr-dock-settings
 
 CMD_DOCK = ./cmd/hypr-dock/.
 CMD_ALTTAB = ./cmd/hypr-alttab/.
@@ -26,6 +28,8 @@ warn:
 build-all:
 	$(MAKE) build-dock
 	$(MAKE) build-alttab
+	$(MAKE) build-ctl
+	$(MAKE) build-settings
 
 build: build-all
 
@@ -36,6 +40,12 @@ build-dock:
 build-alttab:
 	$(MAKE) warn
 	go build -v -o $(PROJECT_BIN_DIR)/$(EXECUTABLE_ALTTAB) $(CMD_ALTTAB)
+
+build-ctl:
+	go build -v -o $(PROJECT_BIN_DIR)/$(EXECUTABLE_CTL) ./cmd/hypr-dockctl/.
+
+build-settings:
+	go build -v -o $(PROJECT_BIN_DIR)/$(EXECUTABLE_SETTINGS) ./cmd/hypr-dock-settings/.
 
 install: install-all
 
@@ -49,6 +59,15 @@ install-alttab:
 	sudo cp $(PROJECT_BIN_DIR)/$(EXECUTABLE_ALTTAB) /usr/bin/
 	@echo -e "$(GREEN)hypr-alttab installed$(RESET)"
 
+install-ctl:
+	sudo cp $(PROJECT_BIN_DIR)/$(EXECUTABLE_CTL) /usr/bin/
+	@echo -e "$(GREEN)hypr-dockctl installed$(RESET)"
+
+install-settings:
+	-sudo killall $(EXECUTABLE_SETTINGS) 2>/dev/null || true
+	sudo cp $(PROJECT_BIN_DIR)/$(EXECUTABLE_SETTINGS) /usr/bin/
+	@echo -e "$(GREEN)hypr-dock-settings installed$(RESET)"
+
 update-config:
 	sudo -rf $(PROJECT_CONFIG_DIR)/. $(SYSTEM_CONFIG_DIR)/
 	@echo -e "$(GREEN)Configs copied to $(SYSTEM_CONFIG_DIR)$(RESET)
@@ -56,6 +75,8 @@ update-config:
 install-all:
 	$(MAKE) install-dock
 	$(MAKE) install-alttab
+	$(MAKE) install-ctl
+	$(MAKE) install-settings
 	$(MAKE) update-config
 
 uninstall:

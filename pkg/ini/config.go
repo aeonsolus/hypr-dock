@@ -33,6 +33,20 @@ func New(file string, logger hclog.Logger, globalKey ...string) *Manager {
 	}
 }
 
+// NewManagerEmpty returns a Manager backed by no file at all: every lookup
+// falls through to defaults. Used to materialize default configurations.
+func NewManagerEmpty() *Manager {
+	return &Manager{
+		raw:    make(map[string]map[string]string),
+		logger: hclog.NewNullLogger(),
+	}
+}
+
+// Path returns the backing file of the manager ("" for empty managers).
+func (cm *Manager) Path() string {
+	return cm.path
+}
+
 func (cm *Manager) GetSection(name string) *Section {
 	sraw, exist := cm.raw[name]
 	if !exist {

@@ -1,0 +1,5 @@
+package version
+
+// Version is the hypr-dock release this fork tracks. Kept in a dedicated
+// package so doctor, ctl status and the settings app agree.
+const Version = "1.3.0-custom"

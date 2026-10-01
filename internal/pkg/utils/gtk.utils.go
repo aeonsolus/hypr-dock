@@ -225,27 +225,68 @@ func AddStyle(widget gtk.IWidget, style string) (*gtk.CssProvider, error) {
 // beat the desktop GTK theme (e.g. Adwaita-dark), whose window background
 // would otherwise paint an opaque slab behind the dock. GTK3 cannot parse
 // !important, so priority is the lever.
-func AddCssProvider(cssFile string) error {
+// The provider is returned so callers can swap themes live via
+// RemoveCssProvider.
+func AddCssProvider(cssFile string) (*gtk.CssProvider, error) {
 	cssProvider, err := gtk.CssProviderNew()
 	if err != nil {
-		return errors.Wrap(err, "failed to create CSS provider")
+		return nil, errors.Wrap(err, "failed to create CSS provider")
 	}
 
 	if err := cssProvider.LoadFromPath(cssFile); err != nil {
-		return errors.Wrapf(err, "failed to load CSS from %q", cssFile)
+		return nil, errors.Wrapf(err, "failed to load CSS from %q", cssFile)
 	}
 
+	if err := registerProvider(cssProvider, int(gtk.STYLE_PROVIDER_PRIORITY_USER)); err != nil {
+		return nil, err
+	}
+
+	return cssProvider, nil
+}
+
+// AddCssData registers a generated CSS fragment (e.g. appearance overrides)
+// at the given provider priority. Priority 900 sits above the theme file's
+// USER priority (800) so overrides win without touching the file itself.
+func AddCssData(css string, priority int) (*gtk.CssProvider, error) {
+	provider, err := gtk.CssProviderNew()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create CSS provider")
+	}
+
+	if err := provider.LoadFromData(css); err != nil {
+		return nil, errors.Wrapf(err, "failed to load CSS data: %q", css)
+	}
+
+	if err := registerProvider(provider, priority); err != nil {
+		return nil, err
+	}
+
+	return provider, nil
+}
+
+func registerProvider(provider *gtk.CssProvider, priority int) error {
 	screen, err := gdk.ScreenGetDefault()
 	if err != nil {
 		return errors.Wrap(err, "failed to get default screen")
 	}
 
-	gtk.AddProviderForScreen(
-		screen, cssProvider,
-		gtk.STYLE_PROVIDER_PRIORITY_USER,
-	)
-
+	gtk.AddProviderForScreen(screen, provider, uint(priority))
 	return nil
+}
+
+// RemoveCssProvider unregisters a screen-level provider previously added by
+// AddCssProvider/AddCssData. Used for live theme swaps.
+func RemoveCssProvider(provider *gtk.CssProvider) {
+	if provider == nil {
+		return
+	}
+
+	screen, err := gdk.ScreenGetDefault()
+	if err != nil {
+		return
+	}
+
+	gtk.RemoveProviderForScreen(screen, provider)
 }
 
 func RemoveStyleProvider(widget *gtk.Box, provider *gtk.CssProvider) error {

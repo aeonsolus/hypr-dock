@@ -3,13 +3,19 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/allan-simon/go-singleinstance"
+	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
 
 	"hypr-dock/internal/app"
+	"hypr-dock/internal/ctl"
+	"hypr-dock/internal/diag"
 	"hypr-dock/internal/follow"
 	"hypr-dock/internal/hypr/hyprEvents"
 	"hypr-dock/internal/layering"
@@ -18,10 +24,29 @@ import (
 	"hypr-dock/internal/pkg/utils"
 	"hypr-dock/internal/settings"
 	"hypr-dock/internal/state"
+	"hypr-dock/internal/version"
 )
 
 func main() {
 	signals.Handler()
+
+	// Subcommands that do not start a dock instance.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "doctor":
+			diagRun()
+			return
+		case "settings", "--settings":
+			if err := spawnSettings(); err != nil {
+				fmt.Fprintf(os.Stderr, "hypr-dock: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		case "version", "--version":
+			fmt.Println("hypr-dock", version.Version)
+			return
+		}
+	}
 
 	lockFilePath := fmt.Sprintf("%s/hypr-dock-%s.lock", utils.TempDir(), os.Getenv("USER"))
 	lockFile, err := singleinstance.CreateLockFile(lockFilePath)
@@ -50,12 +75,12 @@ func main() {
 	defer lockFile.Close()
 
 	// flags
-	flags := flags.Get()
+	parsedFlags := flags.Get()
 
-	logger := utils.СreateLogger(flags.LogLevel)
+	logger := utils.СreateLogger(parsedFlags.LogLevel)
 
 	// window build
-	settings, err := settings.Init(flags, logger)
+	settings, err := settings.Init(parsedFlags, logger)
 	if err != nil {
 		logger.Error("Settings init error:", "err", err)
 	}
@@ -63,6 +88,9 @@ func main() {
 	gtk.Init(nil)
 
 	appState := state.New(settings, logger)
+	// Start the control plane as soon as state exists, so diagnostics and
+	// settings remain available even if later GTK initialization is slow.
+	go controlServer(appState)
 
 	window, err := gtk.WindowNew(gtk.WINDOW_TOPLEVEL)
 	if err != nil {
@@ -91,21 +119,120 @@ func main() {
 		follow.PreHide(window, layerctl)
 	}
 
-	err = utils.AddCssProvider(settings.ThemeStyle)
+	themeProvider, err := utils.AddCssProvider(settings.ThemeStyle)
 	if err != nil {
 		logger.Warn("CSS file not found, the default GTK theme is running!", "err", err)
 	}
+	appState.SetThemeProvider(themeProvider)
+	app.ReplaceCss(appState)
 
-	app := app.BuildApp(appState)
+	appBox := app.BuildApp(appState)
+	appState.SetAppBox(appBox)
 
-	window.Add(app)
+	window.Add(appBox)
 	window.Connect("destroy", func() { gtk.MainQuit() })
 	window.ShowAll()
 
 	// post
 	hyprEvents.Init(appState)
 	follow.Init(appState)
+	app.WatchConfigFiles(appState)
 
 	// end
 	gtk.Main()
+}
+
+// controlServer serves the control socket for hypr-dockctl and the settings
+// application.
+func controlServer(appState *state.State) {
+	logger := utils.СreateLogger("debug")
+	logger.Info("Control server goroutine started")
+
+	handler := func(req ctl.Request) ctl.Response {
+		switch req.Cmd {
+		case ctl.CmdPing:
+			return ctl.Response{Ok: true}
+
+		case ctl.CmdApply:
+			glib.IdleAdd(func() { app.ApplyFull(appState) })
+			return ctl.Response{Ok: true}
+
+		case ctl.CmdSet:
+			s := appState.GetSettings()
+			if s == nil {
+				return ctl.Response{Ok: false, Error: "settings not ready"}
+			}
+			if err := s.SetByPath(req.Key, req.Value); err != nil {
+				return ctl.Response{Ok: false, Error: err.Error()}
+			}
+			if err := s.Save(s.ConfigPath); err != nil {
+				return ctl.Response{Ok: false, Error: err.Error()}
+			}
+			app.ScheduleApply(appState)
+			return ctl.Response{Ok: true}
+
+		case ctl.CmdStatus:
+			data := map[string]string{
+				"pid":     strconv.Itoa(os.Getpid()),
+				"version": version.Version,
+			}
+			if s := appState.GetSettings(); s != nil {
+				data["theme"] = s.CurrentTheme
+				data["pinned"] = strconv.Itoa(len(s.PinnedApps))
+				data["config"] = s.ConfigPath
+			}
+			return ctl.Response{Ok: true, Data: data}
+
+		case ctl.CmdQuit:
+			glib.IdleAdd(func() { gtk.MainQuit() })
+			return ctl.Response{Ok: true}
+
+		default:
+			return ctl.Response{Ok: false, Error: "unknown command: " + req.Cmd}
+		}
+	}
+
+	stop, err := ctl.Serve(handler)
+	if err != nil {
+		logger.Error("Control socket unavailable", "error", err)
+		return
+	}
+	defer stop()
+
+	// Keep this goroutine alive for the process lifetime: controlServer must
+	// not return, because returning runs the deferred teardown above and
+	// would immediately close the socket it just opened.
+	for {
+		time.Sleep(time.Hour)
+	}
+}
+
+// spawnSettings launches the settings application detached from this process.
+func spawnSettings() error {
+	candidates := []string{}
+
+	if exe, err := os.Executable(); err == nil {
+		candidates = append(candidates,
+			filepath.Join(filepath.Dir(exe), "hypr-dock-settings"))
+	}
+	candidates = append(candidates, "hypr-dock-settings")
+
+	for _, candidate := range candidates {
+		if _, err := exec.LookPath(candidate); err == nil {
+			cmd := exec.Command(candidate)
+			cmd.Stdout = nil
+			cmd.Stderr = nil
+			if err := cmd.Start(); err != nil {
+				return fmt.Errorf("unable to start %s: %w", candidate, err)
+			}
+			return nil
+		}
+	}
+
+	return fmt.Errorf("hypr-dock-settings binary not found")
+}
+
+// diagRun executes the doctor diagnostics.
+func diagRun() {
+	fmt.Println(diag.Report(version.Version))
 }

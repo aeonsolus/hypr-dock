@@ -32,6 +32,18 @@ type Item struct {
 	List       map[string]*Item
 	PinnedList *[]string
 
+	// Active tracks whether one of the app's windows currently has focus.
+	Active bool
+
+	// OnPinChange is invoked after pin state changes so the dock can re-derive
+	// icon order (pinned section first). Set by the app layer.
+	OnPinChange func()
+
+	// MinimizeRestore remembers the originating workspace of windows parked
+	// in the special minimize workspace, so a click restores them where they
+	// lived instead of leaving the user stranded.
+	MinimizeRestore map[string]int
+
 	log hclog.Logger
 }
 
@@ -64,9 +76,9 @@ func NewWithApp(className string, app *desktop.App, settings *settings.Settings,
 	}
 
 	indicatorImage, err := indicator.New(0, settings)
-	if err == nil {
+	if err == nil && settings.ShowWindowCount {
 		appendInducator(item, indicatorImage, settings.Position)
-	} else {
+	} else if err != nil {
 		log.Error("Unable to create windows indicator", "className", className, "error", err)
 	}
 
@@ -91,12 +103,13 @@ func NewWithApp(className string, app *desktop.App, settings *settings.Settings,
 	}
 
 	return &Item{
-		Windows:        map[string]*ipc.Client{},
-		IndicatorImage: indicatorImage,
-		Button:         button,
-		ButtonBox:      item,
-		App:            app,
-		ClassName:      className,
+		Windows:         map[string]*ipc.Client{},
+		MinimizeRestore: map[string]int{},
+		IndicatorImage:  indicatorImage,
+		Button:          button,
+		ButtonBox:       item,
+		App:             app,
+		ClassName:       className,
 
 		Settings:   settings,
 		List:       nil,
@@ -106,41 +119,40 @@ func NewWithApp(className string, app *desktop.App, settings *settings.Settings,
 	}, nil
 }
 
-func (i *Item) RemoveWindow(windowAddress string) {
+// RefreshIndicator rebuilds the running-count dots for the current window
+// set. Honors ShowWindowCount.
+func (i *Item) RefreshIndicator() {
 	if i.IndicatorImage != nil {
 		i.IndicatorImage.Destroy()
+		i.IndicatorImage = nil
 	}
 
-	delete(i.Windows, windowAddress)
-	instances := len(i.Windows)
+	if !i.Settings.ShowWindowCount {
+		return
+	}
 
+	instances := len(i.Windows)
 	newImage, err := indicator.New(instances, i.Settings)
 	if err == nil {
 		appendInducator(i.ButtonBox, newImage, i.Settings.Position)
 	}
 	i.IndicatorImage = newImage
+}
 
-	if instances == 0 && i.Settings.Preview.Mode != "none" {
+func (i *Item) RemoveWindow(windowAddress string) {
+	delete(i.Windows, windowAddress)
+	i.RefreshIndicator()
+
+	if len(i.Windows) == 0 && i.Settings.Preview.Mode != "none" {
 		i.Button.SetTooltipText(i.App.GetName())
 	}
 }
 
 func (i *Item) AddWindow(ipcClient ipc.Client) {
-	if i.IndicatorImage != nil {
-		i.IndicatorImage.Destroy()
-	}
-
 	i.Windows[ipcClient.Address] = &ipcClient
-	instances := len(i.Windows)
+	i.RefreshIndicator()
 
-	indicatorImage, err := indicator.New(instances, i.Settings)
-	if err == nil {
-		appendInducator(i.ButtonBox, indicatorImage, i.Settings.Position)
-	}
-
-	i.IndicatorImage = indicatorImage
-
-	if instances != 0 && i.Settings.Preview.Mode != "none" {
+	if len(i.Windows) != 0 && i.Settings.Preview.Mode != "none" {
 		i.Button.SetTooltipText("")
 	}
 }
@@ -184,6 +196,42 @@ func (i *Item) TogglePin() {
 	}
 
 	i.log.Trace("File saved successfully!", file, className)
+
+	if i.OnPinChange != nil {
+		i.OnPinChange()
+	}
+}
+
+// PinAt inserts the app into the pinned list at a specific position (drag
+// landing spot). Running state is preserved; no duplicate icon is created
+// because the item identity is the class.
+func (i *Item) PinAt(position int) {
+	list := i.PinnedList
+
+	if i.IsPinned() {
+		i.TogglePin()
+		return
+	}
+
+	className := i.ClassName
+	if position < 0 {
+		position = 0
+	}
+	if position > len(*list) {
+		position = len(*list)
+	}
+
+	*list = slices.Insert(*list, position, className)
+
+	file := i.Settings.PinnedPath
+	if err := pinned.Save(file, *list); err != nil {
+		i.log.Error("Failed to save pinned list", "file", file, "error", err)
+		return
+	}
+
+	if i.OnPinChange != nil {
+		i.OnPinChange()
+	}
 }
 
 func (i *Item) Remove() {

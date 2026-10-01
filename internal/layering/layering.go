@@ -59,6 +59,12 @@ func NewInit(window *gtk.Window, settings *settings.Settings) *Control {
 	return ctrl
 }
 
+// SetSettings repoints the control at a new settings object so live config
+// reloads affect layer decisions without recreating the surface.
+func (c *Control) SetSettings(s *settings.Settings) {
+	c.settings = s
+}
+
 func (c *Control) SetLayer() {
 	c.clear()
 

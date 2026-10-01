@@ -17,10 +17,16 @@ type State struct {
 	settings *settings.Settings
 	window   *gtk.Window
 	layerctl *layering.Control
+	appBox   *gtk.Box
 	itemsBox *gtk.Box
 	list     *itemsctl.List
 	pv       *pvctl.PV
-	mu       sync.Mutex
+
+	themeProvider    *gtk.CssProvider
+	overrideProvider *gtk.CssProvider
+
+	activeAddress string
+	mu            sync.Mutex
 }
 
 func New(settings *settings.Settings, logger hclog.Logger) *State {
@@ -114,4 +120,53 @@ func (s *State) GetPV() *pvctl.PV {
 	defer s.mu.Unlock()
 
 	return s.pv
+}
+
+func (s *State) SetAppBox(box *gtk.Box) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.appBox = box
+}
+
+func (s *State) GetAppBox() *gtk.Box {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.appBox
+}
+
+func (s *State) SetThemeProvider(provider *gtk.CssProvider) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.themeProvider = provider
+}
+
+func (s *State) GetThemeProvider() *gtk.CssProvider {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.themeProvider
+}
+
+func (s *State) SetOverrideProvider(provider *gtk.CssProvider) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.overrideProvider = provider
+}
+
+func (s *State) GetOverrideProvider() *gtk.CssProvider {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.overrideProvider
+}
+
+// SetActiveAddress records the focused window address ("0x..." or "").
+func (s *State) SetActiveAddress(address string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.activeAddress = address
+}
+
+func (s *State) GetActiveAddress() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.activeAddress
 }

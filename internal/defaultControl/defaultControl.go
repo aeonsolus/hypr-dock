@@ -16,6 +16,10 @@ type Control struct {
 	settings *settings.Settings
 	log      hclog.Logger
 
+	// previewMode reroutes running-app clicks to the preview wiring (single
+	// → focus, multi → popup preview) instead of the plain click actions.
+	previewMode bool
+
 	zeroHandler   func()
 	singleHandler func()
 	multiHandler  func(onContextClose func())
@@ -30,9 +34,9 @@ func New(item *item.Item, settings *settings.Settings, log hclog.Logger) *Contro
 	}
 
 	singleHandler := func() {
-		client, ok := utils.GetSingleValue(item.Windows)
+		client, ok := utils.GetFocusedValue(item.Windows)
 		if ok {
-			ipc.Hyprctl("dispatch focuswindow address:" + client.Address)
+			ipc.FocusWindow(client.Address)
 		}
 	}
 
@@ -70,6 +74,70 @@ func New(item *item.Item, settings *settings.Settings, log hclog.Logger) *Contro
 	}
 }
 
+// showWindows pops the per-window menu (used by "show windows" actions).
+func (c *Control) showWindows() {
+	c.multiHandler(c.onContextClose)
+}
+
+// focusItem restores minimized windows into their original workspaces and
+// focuses the most recently focused one.
+func (c *Control) focusItem() {
+	i := c.item
+
+	for address, workspace := range i.MinimizeRestore {
+		ipc.MoveWindowToWorkspace(address, workspace)
+		delete(i.MinimizeRestore, address)
+	}
+
+	client, ok := utils.GetFocusedValue(i.Windows)
+	if !ok {
+		return
+	}
+	ipc.FocusWindow(client.Address)
+}
+
+// minimizeItem parks every window of the app in the special minimize
+// workspace, remembering where each window came from for restoration.
+func (c *Control) minimizeItem() {
+	i := c.item
+
+	for address, client := range i.Windows {
+		if client.Workspace.Id < 1 {
+			continue
+		}
+		i.MinimizeRestore[address] = client.Workspace.Id
+		ipc.MinimizeWindow(address)
+	}
+}
+
+// applyRunning handles clicks on running-but-unfocused applications.
+func (c *Control) applyRunning() {
+	switch c.settings.ClickAction {
+	case "launch":
+		c.item.App.Run()
+	case "minimize", "focus":
+		c.focusItem()
+	case "show":
+		c.showWindows()
+	case "cycle":
+		ipc.CycleWindows()
+	case "none":
+	}
+}
+
+// applyFocused handles clicks on the focused application.
+func (c *Control) applyFocused() {
+	switch c.settings.ClickActionFocused {
+	case "minimize":
+		c.minimizeItem()
+	case "show":
+		c.showWindows()
+	case "cycle":
+		ipc.CycleWindows()
+	case "none":
+	}
+}
+
 func (c *Control) Init() {
 	c.connectContextMenu()
 
@@ -87,12 +155,62 @@ func (c *Control) Init() {
 
 		if instances == 0 {
 			c.zeroHandler()
+			return
 		}
-		if instances == 1 {
-			c.singleHandler()
-		}
-		if instances > 1 {
+
+		if c.previewMode {
+			if instances == 1 {
+				if c.singleHandler != nil {
+					c.singleHandler()
+				} else {
+					c.focusItem()
+				}
+				return
+			}
 			c.multiHandler(c.onContextClose)
+			return
+		}
+
+		if c.item.Active {
+			c.applyFocused()
+			return
+		}
+
+		c.applyRunning()
+	})
+
+	c.connectMiddleClick()
+}
+
+// SetPreviewMode routes running-app clicks through the preview handlers.
+func (c *Control) SetPreviewMode(enabled bool) {
+	c.previewMode = enabled
+}
+
+// connectMiddleClick wires the configurable middle-click action
+// (default: launch a new instance).
+func (c *Control) connectMiddleClick() {
+	c.item.Button.Connect("button-release-event", func(_ *gtk.Button, e *gdk.Event) {
+		event := gdk.EventButtonNewFromEvent(e)
+		if event.Button() != 2 {
+			return
+		}
+
+		if item.DragActive() {
+			return
+		}
+
+		if c.item.IsTerminalGroup() {
+			return
+		}
+
+		switch c.settings.MiddleClickAction {
+		case "launch":
+			if len(c.item.Windows) != 0 && c.item.App.GetSingleWindow() {
+				// Single-window apps refuse extra instances.
+				return
+			}
+			c.item.App.Run()
 		}
 	})
 }

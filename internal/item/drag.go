@@ -2,11 +2,15 @@ package item
 
 import (
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/gotk3/gotk3/gdk"
 	"github.com/gotk3/gotk3/gtk"
 
+	layerinfo "hypr-dock/internal/layerInfo"
 	"hypr-dock/internal/pkg/pinned"
+	"hypr-dock/pkg/ipc"
 )
 
 // Drag-to-reorder support.
@@ -97,12 +101,110 @@ func (i *Item) AttachDrag() {
 		if dragState != nil {
 			if dragState.active {
 				dragState.item.Button.SetOpacity(1)
-				persistOrder()
+				finalizeDrag()
 			}
 			dragState = nil
 		}
 		return false
 	})
+}
+
+// finalizeDrag decides what a completed drag means:
+//   - pinned item released with the cursor outside the dock → unpin
+//     (deliberate: the pointer must fully leave the dock)
+//   - unpinned item released inside the pinned region → pin it there
+//   - otherwise → persist the new pinned order
+func finalizeDrag() {
+	if dragBox == nil || dragState == nil || dragState.item == nil {
+		return
+	}
+
+	item := dragState.item
+
+	if item.IsPinned() {
+		if pointerOutsideDock(item) {
+			item.TogglePin() // unpin; running windows keep a dock icon
+			return
+		}
+		persistOrder()
+		return
+	}
+
+	// Unpinned item: pin at the drop position within the pinned block.
+	if beforeCount, inside := analyzeDragEnd(item); inside {
+		item.PinAt(beforeCount)
+		return
+	}
+}
+
+// analyzeDragEnd measures the dragged item's final position against the
+// pinned block. Returns how many pinned icons precede it and whether it
+// landed inside the pinned region.
+func analyzeDragEnd(item *Item) (beforeCount int, inside bool) {
+	if dragBox == nil {
+		return 0, false
+	}
+
+	before, after := 0, 0
+	draggedIndex := -1
+	idx := 0
+	for l := dragBox.GetChildren(); l != nil && l.Data() != nil; l = l.Next() {
+		w, ok := l.Data().(gtk.IWidget)
+		if !ok {
+			idx++
+			continue
+		}
+		native := w.ToWidget().Native()
+		if item.ButtonBox != nil && item.ButtonBox.ToWidget().Native() == native {
+			draggedIndex = idx
+		} else if item.List != nil {
+			for _, it := range item.List {
+				if it.ButtonBox != nil && it.ButtonBox.ToWidget().Native() == native && it.IsPinned() {
+					if draggedIndex >= 0 {
+						after++
+					} else {
+						before++
+					}
+					break
+				}
+			}
+		}
+		idx++
+	}
+
+	if draggedIndex < 0 {
+		return 0, false
+	}
+
+	return before, draggedIndex <= before+after
+}
+
+// pointerOutsideDock checks the Hyprland cursor against the dock's layer
+// surface rectangle. A modest slack keeps edge-of-dock drops from unpinning.
+func pointerOutsideDock(item *Item) bool {
+	raw, err := ipc.Hyprctl("cursorpos")
+	if err != nil {
+		return false
+	}
+
+	parts := strings.SplitN(strings.TrimSpace(string(raw)), ",", 2)
+	if len(parts) != 2 {
+		return false
+	}
+	x, err1 := strconv.Atoi(strings.TrimSpace(parts[0]))
+	y, err2 := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err1 != nil || err2 != nil {
+		return false
+	}
+
+	dock, err := layerinfo.GetDock()
+	if err != nil {
+		return false
+	}
+
+	const slack = 8
+	return x < dock.X-slack || x > dock.X+dock.W+slack ||
+		y < dock.Y-slack || y > dock.Y+dock.H+slack
 }
 
 // reorderUnderPointer moves the dragged item to the position under the

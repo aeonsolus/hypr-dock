@@ -1,7 +1,6 @@
 package app
 
 import (
-	"fmt"
 	"os"
 	"slices"
 	"strings"
@@ -9,9 +8,9 @@ import (
 	"github.com/gotk3/gotk3/gtk"
 
 	"hypr-dock/internal/btnctl"
-	"hypr-dock/internal/hypr/hyprOpt"
 	"hypr-dock/internal/item"
 	"hypr-dock/internal/pkg/utils"
+	"hypr-dock/internal/reorder"
 	"hypr-dock/internal/state"
 	"hypr-dock/internal/terminal"
 	"hypr-dock/pkg/ipc"
@@ -28,8 +27,10 @@ func BuildApp(appState *state.State) *gtk.Box {
 		os.Exit(2)
 	}
 
-	initMargin(app, appState)
 	app.SetName("app")
+	appState.SetAppBox(app)
+
+	initMarginSafe(appState)
 
 	itemsBox, _ := gtk.BoxNew(orientation, settings.Spacing)
 	itemsBox.SetName("items-box")
@@ -45,6 +46,7 @@ func BuildApp(appState *state.State) *gtk.Box {
 
 	appState.SetItemsBox(itemsBox)
 	item.InitDrag(itemsBox)
+	buildLauncher(appState)
 	renderItems(appState)
 	app.Add(itemsBox)
 
@@ -72,20 +74,27 @@ func InitTerminalGroup(appState *state.State) {
 }
 
 func renderItems(appState *state.State) {
+	settings := appState.GetSettings()
 	clients, _ := ipc.GetClients()
 
 	InitTerminalGroup(appState)
 
-	for _, className := range *appState.GetPinned() {
-		if appState.GetSettings().IsHidden(className) {
-			continue
+	if settings.ShowPinnedApps {
+		for _, className := range *appState.GetPinned() {
+			if settings.IsHidden(className) {
+				continue
+			}
+			InitNewItemInClass(className, appState)
 		}
-		InitNewItemInClass(className, appState)
 	}
 
-	for _, ipcClient := range clients {
-		InitNewItemInIPC(ipcClient, appState)
+	if settings.ShowRunningApps {
+		for _, ipcClient := range clients {
+			InitNewItemInIPC(ipcClient, appState)
+		}
 	}
+
+	reorder.All(appState)
 
 	ipc.DispatchEvent("hd>>dock-render-finish")
 }
@@ -187,33 +196,6 @@ func ChangeWindowTitle(address string, title string, appState *state.State) {
 	}
 
 	client.Title = title
-}
-
-func initMargin(app *gtk.Box, appState *state.State) {
-	log := appState.GetLogger()
-
-	settings := appState.GetSettings()
-	position := settings.Position
-	defMargin := settings.Margin
-
-	if !settings.SystemGapUsed {
-		setMargin(app, position, defMargin)
-		return
-	}
-
-	margin, err := hyprOpt.GetGap()
-	if err != nil {
-		log.Error("Failed to get gaps, indent set from settings", "error", err)
-		setMargin(app, position, defMargin)
-		return
-	}
-
-	setMargin(app, position, margin...)
-
-	hyprOpt.GapChangeEvent(func(gaps []int) {
-		setMargin(app, position, gaps...)
-		fmt.Println(gaps)
-	})
 }
 
 func setMargin(app *gtk.Box, position string, margin ...int) {

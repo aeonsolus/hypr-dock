@@ -27,6 +27,12 @@ func structForRange(s interface{}, callback func(field reflect.StructField, curr
 		field := v.Field(i)
 		fieldType := t.Field(i)
 
+		// Unexported fields (internal bookkeeping) cannot be read or set via
+		// reflection and are never part of the config surface.
+		if !fieldType.IsExported() {
+			continue
+		}
+
 		currentValue := field.Interface()
 
 		newValue := callback(fieldType, currentValue)

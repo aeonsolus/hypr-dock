@@ -23,11 +23,58 @@ func Init(appState *state.State) {
 		closewindowHandler(event, appState)
 	}, true)
 
+	ipc.AddEventListener("activewindow", func(event string) {
+		activeWindowHandler(event, appState)
+	}, true)
+
+	ipc.AddEventListener("activewindowv2", func(event string) {
+		activeWindowV2Handler(event, appState)
+	}, true)
+
 	ipc.AddEventListener("activespecial", func(event string) {
 		activatespecialHandler(event, appState)
 	}, true)
 
 	go ipc.InitHyprEvents()
+}
+
+// activeWindowHandler fires on focus changes; an empty class means focus
+// left all windows (desktop). The v2 variant carries the address.
+func activeWindowHandler(event string, appState *state.State) {
+	data := eventHandler(event, 2)
+	if len(data) < 2 {
+		return
+	}
+
+	if strings.TrimSpace(data[0]) == "" {
+		glib.IdleAdd(func() {
+			app.UpdateActive(appState, "")
+		})
+		return
+	}
+
+	if address, err := ipc.ActiveAddress(); err == nil {
+		glib.IdleAdd(func() {
+			app.UpdateActive(appState, address)
+		})
+	}
+}
+
+func activeWindowV2Handler(event string, appState *state.State) {
+	data := eventHandler(event, 1)
+	if len(data) < 1 {
+		return
+	}
+
+	raw := strings.TrimSpace(data[0])
+	if raw == "" {
+		return
+	}
+
+	address := "0x" + raw
+	glib.IdleAdd(func() {
+		app.UpdateActive(appState, address)
+	})
 }
 
 func windowTitleHandler(event string, appState *state.State) {

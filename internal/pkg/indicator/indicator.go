@@ -39,7 +39,8 @@ func New(instances int, settings *settings.Settings) (*gtk.Image, error) {
 	path := filepath.Join(settings.ThemeDir, "point", selected.FullName)
 
 	rotate := settings.Position == "left" || settings.Position == "right"
-	return utils.CreateImageWidthTransform(path, settings.IconSize, 0.56, rotate)
+	fraction := float64(settings.IndicatorSize) / 100
+	return utils.CreateImageWidthTransform(path, settings.IconSize, fraction, rotate)
 }
 
 // selectIndicatorFile chooses the appropriate indicator file based on instances count

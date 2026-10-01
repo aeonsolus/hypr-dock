@@ -110,6 +110,57 @@ Margin = 8
 # Distance of the context menu from the window (px) (default 5)
 ContextPos = 5
 
+# Dock follows the cursor across monitors (default true)
+FollowMouse = true
+
+# Dock sections (default: pinned+running shown, recent off)
+ShowPinnedApps = true
+ShowRunningApps = true
+ShowRecentApps = false
+
+# Running indicator dots (default on, 56% of icon size)
+ShowWindowCount = true
+IndicatorSize = 56
+
+# Click semantics for running apps (launch, focus, minimize, show, cycle, none)
+ClickAction = focus          # on an unfocused running app
+ClickActionFocused = minimize # on the already-focused app
+MiddleClickAction = launch    # launch, none
+
+# Launcher button at the start/end of the dock
+ShowLauncherButton = false
+LauncherCommand =            # empty = auto-detect (omarchy-launch-* / rofi / fuzzel / wofi)
+LauncherPosition = start     # start, end
+
+# Follow Omarchy's active theme colors live (see below)
+FollowOmarchy = false
+
+# Window classes that never get a dock icon; comma separated,
+# `*` wildcards allowed (e.g. "scratch-*, *-test")
+HiddenApps =
+
+[Appearance]
+# Structured overrides for the active theme (0 = keep theme value)
+# PanelOpacity - panel alpha in percent (1-100)
+PanelOpacity = 0
+BorderRadius = 0
+BorderWidth = 0
+PanelPadding = 0
+
+# Force-disable hover effects / tint running apps with an accent color
+HoverEffects = true
+ActiveTint = false
+
+# Accent color for the active tint; empty = theme/omarchy accent
+Accent =
+
+[Displays]
+# Show the dock on (focused, primary, specific, all)
+Mode = focused
+
+# Monitor name when Mode = specific
+MonitorName =
+
 [General.preview]
 # Window thumbnail mode selection (none, live, static) (default none)
 Mode = none
@@ -155,6 +206,41 @@ Activates special layer behavior where tiling windows do not overlap the dock
 - `FPS`, `BufferSize` - only used when `Mode = live`
 
 #### Preview appearance settings are configured through theme files
+
+## Settings application & control CLI
+
+This build ships a GTK settings application and a control plane CLI:
+
+- `hypr-dock-settings` — a windowed settings app (Appearance, Behavior,
+  Applications, Windows, Displays, Themes, Advanced). Changes are written to
+  the same config files and applied to the running dock live. Open it via the
+  dock's context menu (`Dock Settings`), `hypr-dockctl settings`, or directly.
+- `hypr-dockctl` — command-line control for a running dock:
+
+```text
+  reload                       apply config/theme/pinned from disk
+  set <Section.Key> <value>    write one key, apply live
+  get <Section.Key>            read one key
+  status                       dock summary
+  settings                     open the settings application
+  pin <class> [position]       pin an application (insert at position)
+  unpin <class>                unpin an application
+  quit                         stop the dock
+  doctor                       diagnostics
+  version                      print version
+```
+
+`set`/`get` use dotted paths matching the config sections, e.g.
+`hypr-dockctl set General.IconSize 56` or `hypr-dockctl get Appearance.PanelOpacity`.
+Every write preserves comments and unknown keys in the config file, and is
+applied to the running dock without a restart.
+
+### Omarchy integration
+
+When `FollowOmarchy = true` (General section), the dock tracks Omarchy's active
+theme colors and regenerates its `omarchy` theme (panel colors, hover and
+indicator dots) when the theme changes — live, without a restart. The
+`doctor` subcommand verifies the integration.
 
 ### Pinned applications are stored in `~/.local/share/hypr-dock/pinned`
 To pin/unpin, open the application's context menu in the dock and click `pin`/`unpin`

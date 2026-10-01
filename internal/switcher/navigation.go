@@ -132,7 +132,7 @@ func (s *Switcher) confirm() {
 
 		// Async Call
 		go func() {
-			ipc.Hyprctl(fmt.Sprintf("dispatch focuswindow address:%s", addr))
+			ipc.FocusWindow(addr)
 		}()
 	} else {
 		s.visible = false

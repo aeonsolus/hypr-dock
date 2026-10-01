@@ -4,6 +4,7 @@ import (
 	defaultcontrol "hypr-dock/internal/defaultControl"
 	"hypr-dock/internal/item"
 	"hypr-dock/internal/pkg/utils"
+	"hypr-dock/internal/reorder"
 	"hypr-dock/internal/state"
 	"hypr-dock/pkg/ipc"
 
@@ -14,6 +15,11 @@ import (
 func Dispatch(item *item.Item, appState *state.State) {
 	settings := appState.GetSettings()
 	ctrl := defaultcontrol.New(item, settings, appState.GetLogger())
+
+	// pin/unpin re-derives icon order (pinned section vs running section).
+	item.OnPinChange = func() {
+		reorder.All(appState)
+	}
 
 	// preview
 	if appState.GetSettings().Preview.Mode != "none" {
@@ -33,11 +39,13 @@ func previewControl(item *item.Item, ctrl *defaultcontrol.Control, appState *sta
 	pv := appState.GetPV()
 	showTimer := pv.GetShowTimer()
 
+	ctrl.SetPreviewMode(true)
+
 	// clickes
 	ctrl.ResetSingle(func() {
 		client, ok := utils.GetSingleValue(item.Windows)
 		if ok {
-			ipc.Hyprctl("dispatch focuswindow address:" + client.Address)
+			ipc.FocusWindow(client.Address)
 
 			showTimer.Stop()
 			if pv.GetActive() {

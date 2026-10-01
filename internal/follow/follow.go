@@ -28,14 +28,18 @@ const (
 )
 
 type Controller struct {
-	appState      *state.State
-	window        *gtk.Window
-	layerctl      *layering.Control
+	appState *state.State
+	window   *gtk.Window
+	layerctl *layering.Control
 
+	started       bool
 	currentNative uintptr
 	animSource    glib.SourceHandle
 	lastAnim      time.Time
 }
+
+// globalController is set by Init so Update can react to config changes.
+var globalController *Controller
 
 // Init starts the follow controller. Call after the window is shown.
 func Init(appState *state.State) *Controller {
@@ -44,10 +48,35 @@ func Init(appState *state.State) *Controller {
 		window:   appState.GetWindow(),
 		layerctl: appState.GetLayerctl(),
 	}
+	globalController = c
 
-	if !c.enabled() {
-		return c
+	if c.enabled() {
+		c.start()
 	}
+
+	return c
+}
+
+// Update reacts to settings changes: lazily starts the controller the first
+// time FollowMouse turns on. The cursor poll itself reads settings each tick,
+// so toggling off stops moving without extra wiring.
+func (c *Controller) Update() {
+	if !c.started && c.enabled() {
+		c.start()
+	}
+}
+
+func Update(appState *state.State) {
+	if globalController != nil {
+		globalController.Update()
+	}
+}
+
+func (c *Controller) start() {
+	if c.started {
+		return
+	}
+	c.started = true
 
 	ipc.AddEventListener("focusedmon", func(event string) {
 		parts := strings.SplitN(event, ">>", 2)
@@ -63,8 +92,6 @@ func Init(appState *state.State) *Controller {
 	}, true)
 
 	go c.pollCursor()
-
-	return c
 }
 
 func (c *Controller) enabled() bool {

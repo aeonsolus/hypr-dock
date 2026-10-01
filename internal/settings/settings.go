@@ -1,16 +1,20 @@
 package settings
 
 import (
-	"hypr-dock/internal/pkg/conf"
-	"hypr-dock/internal/pkg/flags"
-	"hypr-dock/internal/pkg/pinned"
-	"hypr-dock/internal/pkg/utils"
-
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/hashicorp/go-hclog"
+
+	"hypr-dock/internal/pkg/conf"
+	"hypr-dock/internal/pkg/flags"
+	"hypr-dock/internal/pkg/pinned"
+	"hypr-dock/internal/pkg/utils"
 )
 
 const APP_NAME = "hypr-dock"
@@ -18,13 +22,14 @@ const LOCAL = ".local/share"
 
 type Settings struct {
 	*conf.Config
-	LocalDir   string
-	ConfigDir  string
-	ConfigPath string
-	PinnedPath string
-	ThemesDir  string
-	ThemeStyle string
-	PinnedApps []string
+	LocalDir       string
+	ConfigDir      string
+	ConfigPath     string
+	PinnedPath     string
+	ThemesDir      string
+	ThemeStyle     string
+	ThemeStyleHash string
+	PinnedApps     []string
 }
 
 func Init(flags flags.Flags, log hclog.Logger) (*Settings, error) {
@@ -32,13 +37,6 @@ func Init(flags flags.Flags, log hclog.Logger) (*Settings, error) {
 
 	// get local app dir
 	localDir := filepath.Join(os.Getenv("HOME"), LOCAL, APP_NAME)
-
-	// read pinned file
-	pinnedPath := filepath.Join(localDir, "pinned")
-	pinnedApps, err := pinned.Open(pinnedPath)
-	if err != nil {
-		log.Error("Failed to create/write pinned list", "file", pinnedPath, "error", err)
-	}
 
 	// main configs dir
 	configDir, isCreate, err := GetConfigDir(flags.DevMode)
@@ -50,28 +48,101 @@ func Init(flags flags.Flags, log hclog.Logger) (*Settings, error) {
 		configPath = expand(flags.Config)
 	}
 
+	return Load(configPath, configDir, localDir, log)
+}
+
+// Load reads pinned apps, the main config and the active theme from fixed
+// paths. Reload-safe: it re-derives everything from disk and never mutates
+// global state, so the dock can re-load settings at runtime.
+func Load(configPath, configDir, localDir string, log hclog.Logger) (*Settings, error) {
+	var err error
+
+	if log == nil {
+		log = hclog.NewNullLogger()
+	}
+
+	if localDir == "" {
+		localDir = filepath.Join(os.Getenv("HOME"), LOCAL, APP_NAME)
+	}
+
+	// read pinned file
+	pinnedPath := filepath.Join(localDir, "pinned")
+	pinnedApps, err := pinned.Open(pinnedPath)
+	if err != nil {
+		log.Error("Failed to create/write pinned list", "file", pinnedPath, "error", err)
+	}
+
 	// themes dir
 	themesDir := filepath.Join(configDir, "themes")
 
 	// read main config and current theme config
 	config, err := conf.New(configPath, themesDir, log)
 	if err != nil {
-		log.Error("Confog faild", "error", err)
+		// Fail open: run with defaults rather than crashing the dock.
+		log.Error("Config load failed, using defaults", "path", configPath, "error", err)
+		config = conf.Defaults()
+		config.ThemeDir = filepath.Join(themesDir, config.CurrentTheme)
+		config.ThemeConf = filepath.Join(config.ThemeDir, "theme.conf")
+		config.SetPaths(configPath, themesDir)
 	}
 
 	// theme style file
 	themeStyle := filepath.Join(config.ThemeDir, "style.css")
 
 	return &Settings{
-		Config:     config,
-		LocalDir:   localDir,
-		ConfigDir:  configDir,
-		ConfigPath: configPath,
-		PinnedPath: pinnedPath,
-		ThemesDir:  themesDir,
-		ThemeStyle: themeStyle,
-		PinnedApps: pinnedApps,
+		Config:         config,
+		LocalDir:       localDir,
+		ConfigDir:      configDir,
+		ConfigPath:     configPath,
+		PinnedPath:     pinnedPath,
+		ThemesDir:      themesDir,
+		ThemeStyle:     themeStyle,
+		ThemeStyleHash: hashFile(themeStyle),
+		PinnedApps:     pinnedApps,
 	}, nil
+}
+
+// LauncherCommandOrDefault resolves the launcher command: the configured
+// value, else the first known launcher binary on PATH.
+func (s *Settings) LauncherCommandOrDefault() string {
+	if strings.TrimSpace(s.LauncherCommand) != "" {
+		return s.LauncherCommand
+	}
+	return DetectLauncher()
+}
+
+// DetectLauncher probes PATH for known launchers, preferring Omarchy's own.
+func DetectLauncher() string {
+	candidates := []string{
+		"omarchy-launcher",
+		"omarchy-menu",
+		"vicinae",
+		"fuzzel",
+		"walker",
+		"wofi",
+		"rofi",
+		"tofi",
+	}
+	for _, name := range candidates {
+		if path, err := execLookPath(name); err == nil && path != "" {
+			return name
+		}
+	}
+	return ""
+}
+
+func hashFile(path string) string {
+	file, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, file); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func GetConfigDir(dev bool) (string, bool, error) {
@@ -109,4 +180,8 @@ func expand(path string) string {
 		return filepath.Join(home, path[2:])
 	}
 	return path
+}
+
+func execLookPath(name string) (string, error) {
+	return exec.LookPath(name)
 }

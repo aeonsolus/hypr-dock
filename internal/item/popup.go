@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"syscall"
 
 	"github.com/gotk3/gotk3/gtk"
@@ -37,30 +39,76 @@ func (i *Item) ContextMenu() (*gtk.Menu, error) {
 
 	app := i.App
 	actions := app.GetActions()
+	running := len(i.Windows) != 0
 
-	AddWindowsItemToMenu(menu, i.Windows, app, i.log)
+	// Launch — closed apps and multi-instance apps get "New Window".
+	if !i.IsTerminalGroup() {
+		launchMenuItem, err := BuildLaunchMenuItem(i)
+		if err == nil {
+			menu.Append(launchMenuItem)
+		} else {
+			i.log.Error("Unable to create launch menu item", "error", err)
+		}
+	}
 
-	if len(i.Windows) != 0 {
+	// Windows — individual windows live in a submenu so multi-window apps
+	// stay a single dock icon.
+	if running && len(i.Windows) > 1 {
+		windowsItem, err := BuildWindowsSubmenu(i)
+		if err == nil {
+			menu.Append(windowsItem)
+		} else {
+			i.log.Error("Unable to create windows submenu", "error", err)
+		}
+	} else if running {
+		// Single window: keep it directly in the menu (fast focus path).
+		AddWindowsItemToMenu(menu, i.Windows, app, i.log)
+	}
+
+	if !i.IsTerminalGroup() {
+		pinMenuItem, err := BuildPinMenuItem(i)
+		if err == nil {
+			menu.Append(pinMenuItem)
+		} else {
+			i.log.Error("Unable to create pin menu item", "error", err)
+		}
+	}
+
+	if running {
+		if len(i.Windows) == 1 {
+			client, ok := utils.GetSingleValue(i.Windows)
+			if ok {
+				closeMenuItem, err := BuildContextItem("Close", func() {
+					ipc.CloseWindow(client.Address)
+				}, "close-symbolic")
+				if err == nil {
+					menu.Append(closeMenuItem)
+				} else {
+					i.log.Error("Unable to create close menu item", "error", err)
+				}
+			}
+		} else {
+			closeAllMenuItem, err := BuildContextItem("Close All", func() {
+				for _, client := range i.Windows {
+					go ipc.CloseWindow(client.Address)
+				}
+			}, "close-symbolic")
+			if err == nil {
+				menu.Append(closeAllMenuItem)
+			} else {
+				i.log.Error("Unable to create close-all menu item", "error", err)
+			}
+		}
+	}
+
+	if len(actions) > 0 {
 		separator, err := gtk.SeparatorMenuItemNew()
 		if err == nil {
 			menu.Append(separator)
 		} else {
 			i.log.Error("Unable to create gtk separator", "error", err)
 		}
-	}
 
-	if len(i.Windows) != 0 {
-		terminateMenuItem, err := BuildContextItem("Terminate Process", func() {
-			i.TerminateProcesses()
-		}, "process-stop-symbolic")
-		if err == nil {
-			menu.Append(terminateMenuItem)
-		} else {
-			i.log.Error("Unable to create terminate process menu item", "error", err)
-		}
-	}
-
-	if actions != nil {
 		for _, action := range actions {
 			exec := func() {
 				action.Run()
@@ -81,49 +129,85 @@ func (i *Item) ContextMenu() (*gtk.Menu, error) {
 				i.log.Error("Unable to create context item", "error", err)
 			}
 		}
+	}
 
+	if running {
 		separator, err := gtk.SeparatorMenuItemNew()
 		if err == nil {
 			menu.Append(separator)
+		}
+
+		terminateMenuItem, err := BuildContextItem("Terminate Process", func() {
+			i.TerminateProcesses()
+		}, "process-stop-symbolic")
+		if err == nil {
+			menu.Append(terminateMenuItem)
 		} else {
-			i.log.Error("Unable to create gtk separator", "error", err)
+			i.log.Error("Unable to create terminate process menu item", "error", err)
 		}
 	}
 
-	if !i.IsTerminalGroup() {
-		launchMenuItem, err := BuildLaunchMenuItem(i)
-		if err == nil {
-			menu.Append(launchMenuItem)
-		} else {
-			i.log.Error("Unable to create launch menu item", "error", err)
-		}
-
-		pinMenuItem, err := BuildPinMenuItem(i)
-		if err == nil {
-			menu.Append(pinMenuItem)
-		} else {
-			i.log.Error("Unable to create pin menu item", "error", err)
-		}
+	// Always reachable, independent of app state.
+	separator, err := gtk.SeparatorMenuItemNew()
+	if err == nil {
+		menu.Append(separator)
 	}
 
-	if len(i.Windows) == 1 {
-		client, ok := utils.GetSingleValue(i.Windows)
-		if ok {
-			closeMenuItem, err := BuildContextItem("Close", func() {
-				ipc.Hyprctl("dispatch closewindow address:" + client.Address)
-			}, "close-symbolic")
-			if err == nil {
-				menu.Append(closeMenuItem)
-			} else {
-				i.log.Error("Unable to create close menu item", "error", err)
-			}
-		}
+	settingsMenuItem, err := BuildContextItem("Dock Settings…", func() {
+		go OpenDockSettings(i.log)
+	}, "preferences-desktop-symbolic")
+	if err == nil {
+		menu.Append(settingsMenuItem)
+	} else {
+		i.log.Error("Unable to create settings menu item", "error", err)
 	}
 
 	menu.SetName("context-menu")
 	menu.ShowAll()
 
 	return menu, nil
+}
+
+// OpenDockSettings launches the settings application. The binary is searched
+// next to the dock executable first (same install), then on PATH.
+func OpenDockSettings(log hclog.Logger) {
+	candidates := []string{"hypr-dock-settings"}
+
+	if exe, err := os.Executable(); err == nil {
+		candidates = append([]string{filepath.Join(filepath.Dir(exe), "hypr-dock-settings")}, candidates...)
+	}
+
+	for _, candidate := range candidates {
+		if _, err := exec.LookPath(candidate); err == nil {
+			if err := exec.Command(candidate).Start(); err != nil {
+				log.Error("Unable to start settings", "binary", candidate, "error", err)
+			}
+			return
+		}
+	}
+
+	log.Error("hypr-dock-settings binary not found")
+}
+
+// BuildWindowsSubmenu nests the window list under a "Windows" item.
+func BuildWindowsSubmenu(i *Item) (*gtk.MenuItem, error) {
+	item, err := gtk.MenuItemNew()
+	if err != nil {
+		return nil, err
+	}
+
+	item.SetName("menu-item")
+	item.SetLabel("Windows")
+
+	submenu, err := gtk.MenuNew()
+	if err != nil {
+		return nil, err
+	}
+
+	AddWindowsItemToMenu(submenu, i.Windows, i.App, i.log)
+	item.SetSubmenu(submenu)
+
+	return item, nil
 }
 
 func (i *Item) TerminateProcesses() {
@@ -159,7 +243,7 @@ func (i *Item) TerminateProcesses() {
 func AddWindowsItemToMenu(menu *gtk.Menu, windows map[string]*ipc.Client, app *desktop.App, log hclog.Logger) {
 	for _, window := range windows {
 		menuItem, err := BuildContextItem(window.Title, func() {
-			go ipc.Hyprctl("dispatch focuswindow address:" + window.Address)
+			go ipc.FocusWindow(window.Address)
 		}, app.GetIcon())
 
 		if err != nil {

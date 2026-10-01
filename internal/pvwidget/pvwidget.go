@@ -141,7 +141,7 @@ func (w *Widget) createWindowWidget(window *ipc.Client) error {
 	utils.AddStyle(closeBtn, "#close-btn {padding: 0;}")
 
 	eventBox.Connect("button-press-event", func(eb *gtk.EventBox, e *gdk.Event) {
-		go ipc.Hyprctl("dispatch focuswindow address:" + window.Address)
+		go ipc.FocusWindow(window.Address)
 
 		if w.onClick != nil {
 			w.onClick(window)
@@ -171,7 +171,7 @@ func (w *Widget) createWindowWidget(window *ipc.Client) error {
 		}
 
 		closeBtn.Connect("button-press-event", func() {
-			go ipc.Hyprctl("dispatch closewindow address:" + window.Address)
+			go ipc.CloseWindow(window.Address)
 			if len(w.item.Windows) == 1 {
 				w.onEmpty()
 				return
