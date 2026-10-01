@@ -63,6 +63,142 @@ func CreateImage0(source string, size int, rotate bool) (*gtk.Image, error) {
 	return image, nil
 }
 
+// CreateIconBalanced loads an app icon and normalizes its opaque artwork to a
+// uniform fill ratio inside the canvas. Full-bleed logos (e.g. Chrome, which
+// fills the tile edge to edge) and sparse glyphs (terminal app icons with lots
+// of padding) otherwise render at visibly different sizes.
+func CreateIconBalanced(source string, size int) (*gtk.Image, error) {
+	var err error
+	var pixbuf *gdk.Pixbuf
+
+	image, err := gtk.ImageNew()
+	if err != nil {
+		return nil, err
+	}
+
+	scaleFactor := image.GetScaleFactor()
+	physicalSize := size * scaleFactor
+
+	if strings.Contains(source, "/") {
+		pixbuf, err = gdk.PixbufNewFromFileAtSize(source, physicalSize, physicalSize)
+	} else {
+		theme, _ := gtk.IconThemeGetDefault()
+		pixbuf, err = theme.LoadIcon(source, physicalSize, gtk.ICON_LOOKUP_FORCE_SIZE)
+	}
+	if err != nil {
+		return CreateImage0("image-missing", size, false)
+	}
+
+	pixbuf, err = normalizeIconContent(pixbuf, physicalSize)
+	if err != nil {
+		return CreateImage0("image-missing", size, false)
+	}
+
+	surface, err := gdk.CairoSurfaceCreateFromPixbuf(pixbuf, scaleFactor, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	image.SetFromSurface(surface)
+	image.SetPixelSize(size)
+
+	return image, nil
+}
+
+func normalizeIconContent(src *gdk.Pixbuf, canvas int) (*gdk.Pixbuf, error) {
+	w, h := src.GetWidth(), src.GetHeight()
+	if w <= 0 || h <= 0 {
+		return src, nil
+	}
+
+	ch := src.GetNChannels()
+	hasAlpha := src.GetHasAlpha()
+	px := src.GetPixels()
+	stride := src.GetRowstride()
+
+	// Opaque bounding box of the artwork.
+	minX, minY, maxX, maxY := w, h, -1, -1
+	for y := 0; y < h; y++ {
+		row := y * stride
+		for x := 0; x < w; x++ {
+			if hasAlpha && px[row+x*ch+ch-1] == 0 {
+				continue
+			}
+			if x < minX {
+				minX = x
+			}
+			if x > maxX {
+				maxX = x
+			}
+			if y < minY {
+				minY = y
+			}
+			if y > maxY {
+				maxY = y
+			}
+		}
+	}
+	if maxX < 0 {
+		return src, nil // fully transparent artwork: leave untouched
+	}
+
+	bw := maxX - minX + 1
+	bh := maxY - minY + 1
+
+	// Map the artwork's longest side to a uniform share of the canvas.
+	const fill = 0.72
+	scale := (float64(canvas) * fill) / float64(max(bw, bh))
+
+	scaled, err := src.ScaleSimple(int(math.Round(float64(w)*scale)), int(math.Round(float64(h)*scale)), gdk.INTERP_BILINEAR)
+	if err != nil {
+		return src, nil
+	}
+	sw, sh := scaled.GetWidth(), scaled.GetHeight()
+
+	dest, err := gdk.PixbufNew(gdk.COLORSPACE_RGB, true, 8, canvas, canvas)
+	if err != nil {
+		return src, nil
+	}
+
+	dpx := dest.GetPixels()
+	dstride := dest.GetRowstride()
+	for i := range dpx {
+		dpx[i] = 0
+	}
+
+	spx := scaled.GetPixels()
+	sstride := scaled.GetRowstride()
+	sch := scaled.GetNChannels()
+
+	dx0 := (canvas - sw) / 2
+	dy0 := (canvas - sh) / 2
+
+	// Compose centered; crop any overflow (zero padding round the artwork).
+	vx0, vy0 := max(0, dx0), max(0, dy0)
+	vx1, vy1 := min(canvas, dx0+sw), min(canvas, dy0+sh)
+
+	for dy := vy0; dy < vy1; dy++ {
+		sy := dy - dy0
+		doffRow := dy*dstride + vx0*4
+		soffRow := sy * sstride
+		for dx := vx0; dx < vx1; dx++ {
+			sx := dx - dx0
+			doff := doffRow + (dx-vx0)*4
+			soff := soffRow + sx*sch
+			dpx[doff] = spx[soff]
+			dpx[doff+1] = spx[soff+1]
+			dpx[doff+2] = spx[soff+2]
+			if sch == 4 {
+				dpx[doff+3] = spx[soff+3]
+			} else {
+				dpx[doff+3] = 255
+			}
+		}
+	}
+
+	return dest, nil
+}
+
 func AddStyle(widget gtk.IWidget, style string) (*gtk.CssProvider, error) {
 	provider, err := gtk.CssProviderNew()
 	if err != nil {
@@ -84,6 +220,11 @@ func AddStyle(widget gtk.IWidget, style string) (*gtk.CssProvider, error) {
 	return provider, nil
 }
 
+// AddCssProvider loads the dock theme. The provider is registered at USER
+// priority (highest) so rules like `window { background-color: transparent }`
+// beat the desktop GTK theme (e.g. Adwaita-dark), whose window background
+// would otherwise paint an opaque slab behind the dock. GTK3 cannot parse
+// !important, so priority is the lever.
 func AddCssProvider(cssFile string) error {
 	cssProvider, err := gtk.CssProviderNew()
 	if err != nil {
@@ -101,7 +242,7 @@ func AddCssProvider(cssFile string) error {
 
 	gtk.AddProviderForScreen(
 		screen, cssProvider,
-		gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+		gtk.STYLE_PROVIDER_PRIORITY_USER,
 	)
 
 	return nil

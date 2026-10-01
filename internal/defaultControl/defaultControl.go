@@ -74,6 +74,15 @@ func (c *Control) Init() {
 	c.connectContextMenu()
 
 	leftClick(c.item.Button, func(e *gdk.Event) {
+		if item.DragActive() {
+			return
+		}
+
+		if c.item.IsTerminalGroup() {
+			c.multiHandler(c.onContextClose)
+			return
+		}
+
 		instances := len(c.item.Windows)
 
 		if instances == 0 {

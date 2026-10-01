@@ -28,16 +28,41 @@ type Action struct {
 	lang string
 }
 
+func NewVirtual(name, icon string) *App {
+	return &App{
+		name:         map[string]string{"": name},
+		comment:      map[string]string{"": name},
+		icon:         icon,
+		exec:         "",
+		singleWindow: false,
+		actions:      []Action{},
+		raw:          make(map[string]map[string]string),
+	}
+}
+
 func New(className string, lang ...string) (*App, error) {
+	return NewWithTitle(className, "", lang...)
+}
+
+func NewWithTitle(className, windowTitle string, lang ...string) (*App, error) {
 	var locale string
 	if len(lang) == 1 {
 		locale = lang[0]
 	}
 
+	fallbackName := className
+	if strings.TrimSpace(windowTitle) != "" {
+		fallbackName = strings.TrimSpace(windowTitle)
+	}
+	fallbackIcon := "application-x-executable"
+	if strings.HasPrefix(strings.ToLower(className), "steam_app_") {
+		fallbackIcon = "steam"
+	}
+
 	errData := &App{
-		name:         map[string]string{"": className},
-		comment:      map[string]string{"": className},
-		icon:         className,
+		name:         map[string]string{"": fallbackName},
+		comment:      map[string]string{"": fallbackName},
+		icon:         fallbackIcon,
 		exec:         className,
 		singleWindow: false,
 		actions:      []Action{},
@@ -51,6 +76,9 @@ func New(className string, lang ...string) (*App, error) {
 	}
 
 	file := SearchDesktopFile(className)
+	if file == "" {
+		return errData, errors.Errorf("desktop file not found for %q", className)
+	}
 
 	raw, err := ini.GetMap(file, "Desktop Entry")
 	if err != nil {

@@ -15,6 +15,7 @@ import (
 	"hypr-dock/internal/pkg/pinned"
 	"hypr-dock/internal/pkg/utils"
 	"hypr-dock/internal/settings"
+	"hypr-dock/internal/terminal"
 
 	"hypr-dock/pkg/ipc"
 )
@@ -35,11 +36,22 @@ type Item struct {
 }
 
 func New(className string, settings *settings.Settings, log hclog.Logger) (*Item, error) {
-	app, err := desktop.New(className)
-	if err != nil {
-		log.Error("Error reading desktop file", "error", err)
-	}
+	return NewWithTitle(className, "", settings, log)
+}
 
+func NewWithTitle(className, windowTitle string, settings *settings.Settings, log hclog.Logger) (*Item, error) {
+	app, err := desktop.NewWithTitle(className, windowTitle)
+	if err != nil {
+		log.Debug("Desktop metadata unavailable; using fallback", "className", className, "error", err)
+	}
+	return NewWithApp(className, app, settings, log)
+}
+
+func NewTerminalGroup(settings *settings.Settings, log hclog.Logger) (*Item, error) {
+	return NewWithApp(terminal.GroupClass, desktop.NewVirtual("Terminal Apps", "utilities-terminal"), settings, log)
+}
+
+func NewWithApp(className string, app *desktop.App, settings *settings.Settings, log hclog.Logger) (*Item, error) {
 	orientation := gtk.ORIENTATION_VERTICAL
 	switch settings.Position {
 	case "left", "right":
@@ -131,6 +143,10 @@ func (i *Item) AddWindow(ipcClient ipc.Client) {
 	if instances != 0 && i.Settings.Preview.Mode != "none" {
 		i.Button.SetTooltipText("")
 	}
+}
+
+func (i *Item) IsTerminalGroup() bool {
+	return i.ClassName == terminal.GroupClass
 }
 
 func (i *Item) IsPinned() bool {

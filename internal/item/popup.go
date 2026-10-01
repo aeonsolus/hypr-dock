@@ -3,6 +3,8 @@ package item
 import (
 	"errors"
 	"fmt"
+	"os"
+	"syscall"
 
 	"github.com/gotk3/gotk3/gtk"
 	"github.com/gotk3/gotk3/pango"
@@ -47,6 +49,17 @@ func (i *Item) ContextMenu() (*gtk.Menu, error) {
 		}
 	}
 
+	if len(i.Windows) != 0 {
+		terminateMenuItem, err := BuildContextItem("Terminate Process", func() {
+			i.TerminateProcesses()
+		}, "process-stop-symbolic")
+		if err == nil {
+			menu.Append(terminateMenuItem)
+		} else {
+			i.log.Error("Unable to create terminate process menu item", "error", err)
+		}
+	}
+
 	if actions != nil {
 		for _, action := range actions {
 			exec := func() {
@@ -77,18 +90,20 @@ func (i *Item) ContextMenu() (*gtk.Menu, error) {
 		}
 	}
 
-	launchMenuItem, err := BuildLaunchMenuItem(i)
-	if err == nil {
-		menu.Append(launchMenuItem)
-	} else {
-		i.log.Error("Unable to create launch menu item", "error", err)
-	}
+	if !i.IsTerminalGroup() {
+		launchMenuItem, err := BuildLaunchMenuItem(i)
+		if err == nil {
+			menu.Append(launchMenuItem)
+		} else {
+			i.log.Error("Unable to create launch menu item", "error", err)
+		}
 
-	pinMenuItem, err := BuildPinMenuItem(i)
-	if err == nil {
-		menu.Append(pinMenuItem)
-	} else {
-		i.log.Error("Unable to create pin menu item", "error", err)
+		pinMenuItem, err := BuildPinMenuItem(i)
+		if err == nil {
+			menu.Append(pinMenuItem)
+		} else {
+			i.log.Error("Unable to create pin menu item", "error", err)
+		}
 	}
 
 	if len(i.Windows) == 1 {
@@ -109,6 +124,36 @@ func (i *Item) ContextMenu() (*gtk.Menu, error) {
 	menu.ShowAll()
 
 	return menu, nil
+}
+
+func (i *Item) TerminateProcesses() {
+	clients, err := ipc.GetClients()
+	if err != nil {
+		i.log.Error("Unable to refresh windows before terminating process", "error", err)
+		return
+	}
+
+	currentByAddress := make(map[string]ipc.Client, len(clients))
+	for _, client := range clients {
+		currentByAddress[client.Address] = client
+	}
+
+	pids := make(map[int]struct{})
+	for address := range i.Windows {
+		client, ok := currentByAddress[address]
+		if !ok || client.Pid <= 1 || client.Pid == os.Getpid() {
+			continue
+		}
+		pids[client.Pid] = struct{}{}
+	}
+
+	for pid := range pids {
+		if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+			i.log.Error("Unable to terminate process", "pid", pid, "error", err)
+			continue
+		}
+		i.log.Info("Terminate process requested", "pid", pid, "class", i.ClassName)
+	}
 }
 
 func AddWindowsItemToMenu(menu *gtk.Menu, windows map[string]*ipc.Client, app *desktop.App, log hclog.Logger) {

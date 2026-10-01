@@ -3,8 +3,26 @@ package ipc
 import (
 	"log"
 	"net"
+	"strings"
 	"time"
 )
+
+// Hyprland with a Lua config intercepts the raw socket command
+// "dispatch <dispatcher> <args>" and evaluates "<dispatcher> <args>" as a Lua
+// expression, which breaks on the space (')' expected near ...). The working
+// protocol form is to pass the Lua call itself. Rewrite the two address-style
+// dispatches hypr-dock uses to their Lua equivalents.
+func luaDispatchCompat(cmd string) string {
+	if strings.HasPrefix(cmd, "dispatch focuswindow address:") {
+		addr := strings.TrimPrefix(cmd, "dispatch focuswindow address:")
+		return `dispatch hl.dsp.focus({ window = "address:` + addr + `" })`
+	}
+	if strings.HasPrefix(cmd, "dispatch closewindow address:") {
+		addr := strings.TrimPrefix(cmd, "dispatch closewindow address:")
+		return `dispatch hl.dsp.window.close({ window = "address:` + addr + `" })`
+	}
+	return cmd
+}
 
 func Hyprctl(cmd string) (response []byte, err error) {
 	conn, err := net.Dial("unix", getUnixSockAdress())
@@ -12,7 +30,7 @@ func Hyprctl(cmd string) (response []byte, err error) {
 		return nil, err
 	}
 
-	message := []byte(cmd)
+	message := []byte(luaDispatchCompat(cmd))
 	_, err = conn.Write(message)
 	if err != nil {
 		return nil, err

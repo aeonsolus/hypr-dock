@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 
 	"github.com/gotk3/gotk3/gtk"
 
@@ -12,6 +13,7 @@ import (
 	"hypr-dock/internal/item"
 	"hypr-dock/internal/pkg/utils"
 	"hypr-dock/internal/state"
+	"hypr-dock/internal/terminal"
 	"hypr-dock/pkg/ipc"
 )
 
@@ -42,16 +44,42 @@ func BuildApp(appState *state.State) *gtk.Box {
 	}
 
 	appState.SetItemsBox(itemsBox)
+	item.InitDrag(itemsBox)
 	renderItems(appState)
 	app.Add(itemsBox)
 
 	return app
 }
 
+func InitTerminalGroup(appState *state.State) {
+	list := appState.GetList()
+	if list.Get(terminal.GroupClass) != nil {
+		return
+	}
+
+	terminalItem, err := item.NewTerminalGroup(appState.GetSettings(), appState.GetLogger())
+	if err != nil {
+		appState.GetLogger().Error("Unable to create terminal group", "error", err)
+		return
+	}
+
+	terminalItem.List = list.GetMap()
+	terminalItem.PinnedList = appState.GetPinned()
+	btnctl.Dispatch(terminalItem, appState)
+	terminalItem.AttachDrag()
+	list.Add(terminal.GroupClass, terminalItem)
+	appState.GetItemsBox().Add(terminalItem.ButtonBox)
+}
+
 func renderItems(appState *state.State) {
 	clients, _ := ipc.GetClients()
 
+	InitTerminalGroup(appState)
+
 	for _, className := range *appState.GetPinned() {
+		if appState.GetSettings().IsHidden(className) {
+			continue
+		}
 		InitNewItemInClass(className, appState)
 	}
 
@@ -64,17 +92,37 @@ func renderItems(appState *state.State) {
 
 func InitNewItemInIPC(ipcClient ipc.Client, appState *state.State) {
 	list := appState.GetList()
+
+	if terminal.IsTerminalClient(ipcClient) {
+		InitTerminalGroup(appState)
+		if group := list.Get(terminal.GroupClass); group != nil {
+			group.AddWindow(ipcClient)
+			appState.GetWindow().ShowAll()
+		}
+		return
+	}
+
 	className := ipcClient.Class
 
 	if className == "" {
 		className = utils.NormaliseTitle(ipcClient.InitialTitle)
 	}
 
+	// Blacklisted classes (tray/background apps) never get a dock icon.
+	if appState.GetSettings().IsHidden(className) {
+		return
+	}
+
 	pin := slices.Contains(*appState.GetPinned(), className)
 	added := list.Get(className) != nil
 
+	title := strings.TrimSpace(ipcClient.Title)
+	if title == "" {
+		title = strings.TrimSpace(ipcClient.InitialTitle)
+	}
+
 	if !pin && !added {
-		InitNewItemInClass(className, appState)
+		InitNewItemInClassWithTitle(className, title, appState)
 	}
 
 	list.Get(className).AddWindow(ipcClient)
@@ -82,16 +130,22 @@ func InitNewItemInIPC(ipcClient ipc.Client, appState *state.State) {
 }
 
 func InitNewItemInClass(className string, appState *state.State) {
+	InitNewItemInClassWithTitle(className, "", appState)
+}
+
+func InitNewItemInClassWithTitle(className, windowTitle string, appState *state.State) {
 	log := appState.GetLogger()
 
 	list := appState.GetList()
-	item, err := item.New(className, appState.GetSettings(), appState.GetLogger())
+	item, err := item.NewWithTitle(className, windowTitle, appState.GetSettings(), appState.GetLogger())
 	if err != nil {
 		log.Error("Unable to creat app item", "err", err)
 		return
 	}
 
 	btnctl.Dispatch(item, appState)
+
+	item.AttachDrag()
 
 	item.List = list.GetMap()
 	item.PinnedList = appState.GetPinned()
@@ -104,6 +158,12 @@ func InitNewItemInClass(className string, appState *state.State) {
 func RemoveApp(address string, appState *state.State) {
 	item, _, err := appState.GetList().SearchWindow(address)
 	if err != nil {
+		return
+	}
+
+	if item.IsTerminalGroup() {
+		item.RemoveWindow(address)
+		appState.GetWindow().ShowAll()
 		return
 	}
 

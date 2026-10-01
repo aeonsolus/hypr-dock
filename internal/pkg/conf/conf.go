@@ -2,10 +2,12 @@ package conf
 
 import (
 	"fmt"
-	"hypr-dock/pkg/ini"
 	"path/filepath"
+	"strings"
 
 	"github.com/hashicorp/go-hclog"
+
+	"hypr-dock/pkg/ini"
 )
 
 type General struct {
@@ -19,6 +21,40 @@ type General struct {
 	SystemGapUsed bool   `def:"true"`
 	Margin        int    `def:"8"`
 	ContextPos    int    `def:"5"`
+	FollowMouse   bool   `def:"true"`
+	FollowAnimMs  int    `def:"150"`
+	HiddenApps    string `def:""`
+}
+
+// IsHidden reports whether the class name is blacklisted. HiddenApps is a
+// comma-separated list; entries may end or start with '*' for wildcard match.
+func (c *Config) IsHidden(className string) bool {
+	if c == nil || className == "" {
+		return false
+	}
+	for _, entry := range strings.Split(c.HiddenApps, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		switch {
+		case entry == className:
+			return true
+		case strings.HasPrefix(entry, "*") && strings.HasSuffix(entry, "*"):
+			if strings.Contains(className, strings.Trim(entry, "*")) {
+				return true
+			}
+		case strings.HasPrefix(entry, "*"):
+			if strings.HasSuffix(className, strings.TrimPrefix(entry, "*")) {
+				return true
+			}
+		case strings.HasSuffix(entry, "*"):
+			if strings.HasPrefix(className, strings.TrimSuffix(entry, "*")) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type Preview struct {

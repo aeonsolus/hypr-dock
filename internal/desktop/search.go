@@ -1,68 +1,89 @@
 package desktop
 
 import (
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"hypr-dock/pkg/ini"
 )
 
 func SearchDesktopFile(className string) string {
-	for _, appDir := range GetAppDirs() {
-		_, err := os.Stat(filepath.Join(appDir, className+".desktop"))
-		if err == nil {
-			return filepath.Join(appDir, className+".desktop")
+	return searchDesktopFile(className, GetAppDirs())
+}
+
+func searchDesktopFile(className string, appDirs []string) string {
+	browserHost, isBrowserApp := browserHostFromClass(className)
+
+	for _, appDir := range appDirs {
+		files, err := os.ReadDir(appDir)
+		if err != nil {
+			continue
 		}
 
-		// If file non found
-		files, _ := os.ReadDir(appDir)
+		// The desktop ID is the strongest match.
+		exact := filepath.Join(appDir, className+".desktop")
+		if _, err := os.Stat(exact); err == nil {
+			return exact
+		}
 
-		// "krita" > "org.kde.krita.desktop" / "lutris" > "net.lutris.Lutris.desktop"
+		// StartupWMClass is the canonical native-app-to-window mapping.
 		for _, file := range files {
-			if strings.Count(file.Name(), ".") > 1 && strings.Contains(strings.ToLower(file.Name()), className) {
+			path := filepath.Join(appDir, file.Name())
+			general, ok := desktopEntry(path)
+			if !ok {
+				continue
+			}
+			if strings.EqualFold(strings.TrimSpace(general["StartupWMClass"]), className) {
+				return path
+			}
+		}
+
+		// Chromium/Chrome web apps expose their hostname in the WM class,
+		// while their desktop file normally contains the launch URL.
+		if isBrowserApp {
+			for _, file := range files {
+				path := filepath.Join(appDir, file.Name())
+				general, ok := desktopEntry(path)
+				if !ok || !desktopExecMatchesHost(general["Exec"], browserHost) {
+					continue
+				}
+				return path
+			}
+		}
+
+		// Match common reverse-DNS classes such as org.omarchy.btop to
+		// btop.desktop without confusing unrelated applications.
+		if component := lastClassComponent(className); component != "" {
+			for _, file := range files {
+				stem := strings.TrimSuffix(strings.ToLower(file.Name()), ".desktop")
+				if stem == component {
+					return filepath.Join(appDir, file.Name())
+				}
+			}
+		}
+
+		// Existing compatibility fallbacks.
+		for _, file := range files {
+			if strings.Count(file.Name(), ".") > 1 && strings.Contains(strings.ToLower(file.Name()), strings.ToLower(className)) {
 				return filepath.Join(appDir, file.Name())
 			}
-
 		}
 
-		// "VirtualBox Manager" > "virtualbox.desktop"
 		for _, file := range files {
 			if file.Name() == strings.Split(strings.ToLower(className), " ")[0]+".desktop" {
 				return filepath.Join(appDir, file.Name())
 			}
 		}
 
-		// "GitHub Desktop" > "github-desktop.desktop"
 		for _, file := range files {
-			fileName := file.Name()
-			fileName = strings.ToLower(fileName)
-			classNameLower := strings.ToLower(className)
-			classNameLower = strings.ReplaceAll(classNameLower, " ", "-")
-
+			fileName := strings.ToLower(file.Name())
+			classNameLower := strings.ReplaceAll(strings.ToLower(className), " ", "-")
 			if fileName == classNameLower+".desktop" {
 				return filepath.Join(appDir, file.Name())
-			}
-		}
-
-		// Chrome/Chromium webapp: "chrome-messenger.com__-Default" > "Messenger.desktop" (by martonbtoth)
-		if strings.HasPrefix(className, "chrome-") || strings.HasPrefix(className, "chromium-") {
-			// Extract domain from class name (e.g., "chrome-messenger.com__-Default" -> "messenger.com")
-			parts := strings.SplitN(className, "-", 2)
-			if len(parts) == 2 {
-				domain := strings.Split(parts[1], "__")[0] // Remove "__-Default" suffix
-				domain = strings.TrimSuffix(domain, "-")
-				domainParts := strings.Split(domain, ".")
-				if len(domainParts) > 0 {
-					// Try matching by domain name (e.g., "messenger" from "messenger.com")
-					baseName := domainParts[0]
-					for _, file := range files {
-						fileName := file.Name()
-						fileNameLower := strings.ToLower(fileName)
-						if strings.Contains(fileNameLower, strings.ToLower(baseName)) && strings.HasSuffix(fileNameLower, ".desktop") {
-							return filepath.Join(appDir, fileName)
-						}
-					}
-				}
 			}
 		}
 	}
@@ -73,6 +94,67 @@ func SearchDesktopFile(className string) string {
 	}
 
 	return ""
+}
+
+func desktopEntry(path string) (map[string]string, bool) {
+	if !strings.HasSuffix(strings.ToLower(path), ".desktop") {
+		return nil, false
+	}
+	raw, err := ini.GetMap(path, "Desktop Entry")
+	if err != nil {
+		return nil, false
+	}
+	general, ok := raw["Desktop Entry"]
+	return general, ok
+}
+
+func browserHostFromClass(className string) (string, bool) {
+	lower := strings.ToLower(className)
+	prefixes := []string{"chrome-", "chromium-", "brave-", "microsoft-edge-"}
+	for _, prefix := range prefixes {
+		if !strings.HasPrefix(lower, prefix) {
+			continue
+		}
+		host := strings.SplitN(lower[len(prefix):], "__", 2)[0]
+		host = strings.Trim(host, "-")
+		if host == "" || (net.ParseIP(host) == nil && !strings.Contains(host, ".")) {
+			return "", false
+		}
+		return strings.TrimPrefix(host, "www."), true
+	}
+	return "", false
+}
+
+func desktopExecMatchesHost(execLine, wantedHost string) bool {
+	for _, field := range strings.Fields(execLine) {
+		start := strings.Index(field, "http://")
+		if start < 0 {
+			start = strings.Index(field, "https://")
+		}
+		if start < 0 {
+			continue
+		}
+		raw := strings.Trim(field[start:], "\"'()")
+		u, err := url.Parse(raw)
+		if err != nil || u.Hostname() == "" {
+			continue
+		}
+		host := strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
+		if host == wantedHost {
+			return true
+		}
+	}
+	return false
+}
+
+func lastClassComponent(className string) string {
+	parts := strings.FieldsFunc(strings.ToLower(className), func(r rune) bool {
+		return r == '.' || r == '/' || r == ':'
+	})
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[len(parts)-1]
 }
 
 var (

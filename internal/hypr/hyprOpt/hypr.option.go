@@ -12,6 +12,7 @@ import (
 type gapsOut struct {
 	Option string `json:"option"`
 	Custom string `json:"custom"`
+	CSS    string `json:"css"`
 	Set    bool   `json:"set"`
 }
 
@@ -30,14 +31,17 @@ func GetGap() ([]int, error) {
 		return nil, errors.New(errorText)
 	}
 
-	if gapsVal.Custom == "" {
+	gapString := strings.TrimSpace(gapsVal.Custom)
+	if gapString == "" {
+		gapString = strings.TrimSpace(gapsVal.CSS)
+	}
+	if gapString == "" {
 		errorText := fmt.Sprintf("value \"%s\" is empty", option)
 		return nil, errors.New(errorText)
 	}
 
 	outValues := []int{}
-	gapsVal.Custom = strings.TrimSpace(gapsVal.Custom)
-	values := strings.Split(gapsVal.Custom, " ")
+	values := strings.Fields(gapString)
 	for _, value := range values {
 		intValue, err := strconv.ParseFloat(value, 64)
 		if err != nil {
