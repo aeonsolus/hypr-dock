@@ -5,6 +5,7 @@ import (
 
 	"hypr-dock/internal/item"
 	"hypr-dock/internal/state"
+	"hypr-dock/internal/terminal"
 )
 
 // All re-derives the dock's icon order from the unified model: launcher (if
@@ -61,6 +62,11 @@ func All(appState *state.State) {
 		if it := list[className]; it != nil && !settings.IsHidden(className) {
 			final = append(final, className)
 		}
+	}
+
+	// Terminal emulator pins are represented by one stable synthetic item.
+	if list[terminal.GroupClass] != nil {
+		final = append(final, terminal.GroupClass)
 	}
 
 	final = append(final, unpinnedOrder...)

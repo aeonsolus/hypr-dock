@@ -41,6 +41,13 @@ var terminalClasses = map[string]struct{}{
 	"xterm":          {},
 }
 
+// IsTerminalClass reports whether a persisted pin names a terminal emulator.
+// Terminal pins are represented by the single synthetic Terminal Apps item.
+func IsTerminalClass(className string) bool {
+	_, ok := terminalClasses[strings.ToLower(strings.TrimSpace(className))]
+	return ok
+}
+
 // IsTerminalClient identifies terminal-backed windows without relying only on
 // the visible title. The Hyprland client PID is normally the terminal emulator
 // itself, including terminals launched with a custom app-id/class for btop,

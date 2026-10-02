@@ -5,6 +5,7 @@ import (
 
 	"hypr-dock/internal/item"
 	"hypr-dock/internal/pkg/utils"
+	"hypr-dock/internal/reorder"
 	"hypr-dock/internal/state"
 	"hypr-dock/pkg/ipc"
 )
@@ -117,6 +118,8 @@ func RefreshFromClients(appState *state.State) {
 	}
 
 	UpdateActive(appState, appState.GetActiveAddress())
+	// Window churn must never determine dock order; pins remain authoritative.
+	reorder.All(appState)
 }
 
 // clientToItem maps a Hyprland client to its dock item, creating nothing.

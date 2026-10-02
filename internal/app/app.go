@@ -81,6 +81,10 @@ func renderItems(appState *state.State) {
 
 	if settings.ShowPinnedApps {
 		for _, className := range *appState.GetPinned() {
+			// All terminal pins collapse into the synthetic Terminal Apps item.
+			if terminal.IsTerminalClass(className) {
+				continue
+			}
 			if settings.IsHidden(className) {
 				continue
 			}
@@ -162,6 +166,9 @@ func InitNewItemInClassWithTitle(className, windowTitle string, appState *state.
 
 	appState.GetItemsBox().Add(item.ButtonBox)
 	appState.GetWindow().ShowAll()
+	// New running items are appended by GTK; restore the persistent pinned
+	// prefix immediately so unpinned apps cannot displace pinned slots.
+	reorder.All(appState)
 }
 
 func RemoveApp(address string, appState *state.State) {
@@ -181,12 +188,14 @@ func RemoveApp(address string, appState *state.State) {
 
 	if lastWindow && !pin {
 		item.Remove()
+		reorder.All(appState)
 		return
 	}
 
 	item.RemoveWindow(address)
 
 	appState.GetWindow().ShowAll()
+	reorder.All(appState)
 }
 
 func ChangeWindowTitle(address string, title string, appState *state.State) {
