@@ -60,7 +60,8 @@ func NewWithTitle(className, windowTitle string, settings *settings.Settings, lo
 }
 
 func NewTerminalGroup(settings *settings.Settings, log hclog.Logger) (*Item, error) {
-	return NewWithApp(terminal.GroupClass, desktop.NewVirtual("Terminal Apps", "utilities-terminal"), settings, log)
+	app := desktop.NewVirtual("Terminal Apps", "terminal")
+	return NewWithApp(terminal.GroupClass, app, settings, log)
 }
 
 func NewWithApp(className string, app *desktop.App, settings *settings.Settings, log hclog.Logger) (*Item, error) {
@@ -91,9 +92,14 @@ func NewWithApp(className string, app *desktop.App, settings *settings.Settings,
 			log.Error("Unable to create image", "error", err)
 		}
 
-		button.SetName(className)
-
-		button.SetTooltipText(app.GetName())
+		buttonName := className
+		tooltip := app.GetName()
+		if className == terminal.GroupClass {
+			buttonName = "terminal-apps"
+			tooltip = "Terminal Apps"
+		}
+		button.SetName(buttonName)
+		button.SetTooltipText(tooltip)
 
 		utils.SetCursorPointer(button.ToWidget())
 
