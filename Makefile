@@ -81,7 +81,9 @@ install-user-config:
 	cp -a $(PROJECT_CONFIG_DIR)/pinned $(HOME)/.local/share/hypr-dock/
 	@if [ -f "$(PROJECT_CONFIG_DIR)/order" ]; then cp -a $(PROJECT_CONFIG_DIR)/order $(HOME)/.local/share/hypr-dock/; fi
 	cp -a $(PROJECT_CONFIG_DIR)/hypr-dock.lua $(HOME)/.config/hypr/config/
+	cp -a $(PROJECT_CONFIG_DIR)/hypr-dock-hyprland.conf $(HOME)/.config/hypr/config/
 	@if [ -f "$(HOME)/.config/hypr/hyprland.lua" ] && ! grep -Fq 'require("config.hypr-dock")' "$(HOME)/.config/hypr/hyprland.lua"; then printf '\nrequire("config.hypr-dock")\n' >> "$(HOME)/.config/hypr/hyprland.lua"; fi
+	@if [ -f "$(HOME)/.config/hypr/hyprland.conf" ] && ! grep -Fq 'config/hypr-dock-hyprland.conf' "$(HOME)/.config/hypr/hyprland.conf"; then printf '\nsource = ~/.config/hypr/config/hypr-dock-hyprland.conf\n' >> "$(HOME)/.config/hypr/hyprland.conf"; fi
 	@echo -e "$(GREEN)User dock config, themes, pins, order, and Hyprland hook installed$(RESET)"
 
 install-all:
