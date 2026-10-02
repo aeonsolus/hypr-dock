@@ -87,6 +87,9 @@ func NewWithApp(className string, app *desktop.App, settings *settings.Settings,
 	if err == nil {
 		image, err := utils.CreateImage(app.GetIcon(), settings.IconSize)
 		if err == nil {
+			image.SetSizeRequest(settings.IconSize, settings.IconSize)
+			image.SetHAlign(gtk.ALIGN_CENTER)
+			image.SetVAlign(gtk.ALIGN_CENTER)
 			button.SetImage(image)
 		} else {
 			log.Error("Unable to create image", "error", err)
@@ -100,6 +103,7 @@ func NewWithApp(className string, app *desktop.App, settings *settings.Settings,
 		}
 		button.SetName(buttonName)
 		button.SetTooltipText(tooltip)
+		button.SetSizeRequest(settings.IconSize, settings.IconSize)
 
 		utils.SetCursorPointer(button.ToWidget())
 

@@ -44,12 +44,16 @@ func NewLauncher(s *settings.Settings, log hclog.Logger) (*Item, error) {
 		"application-x-executable",
 	})
 	if image, err := utils.CreateImage(iconName, s.IconSize); err == nil {
+		image.SetSizeRequest(s.IconSize, s.IconSize)
+		image.SetHAlign(gtk.ALIGN_CENTER)
+		image.SetVAlign(gtk.ALIGN_CENTER)
 		button.SetImage(image)
 	} else {
 		log.Error("Unable to create launcher image", "error", err)
 	}
 
 	button.SetTooltipText("Applications")
+	button.SetSizeRequest(s.IconSize, s.IconSize)
 	utils.SetCursorPointer(button.ToWidget())
 
 	box.Add(button)
