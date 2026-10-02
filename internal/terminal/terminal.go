@@ -44,6 +44,9 @@ var terminalClasses = map[string]struct{}{
 // IsTerminalClass reports whether a persisted pin names a terminal emulator.
 // Terminal pins are represented by the single synthetic Terminal Apps item.
 func IsTerminalClass(className string) bool {
+	if className == GroupClass {
+		return true
+	}
 	_, ok := terminalClasses[strings.ToLower(strings.TrimSpace(className))]
 	return ok
 }
