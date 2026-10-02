@@ -11,6 +11,20 @@ Translations: [`Русский`](README_RU.md)
 
 ## Installation
 
+## Releases
+
+Every published change must carry a version, pass the full test suite, rebuild
+all binaries, and be committed with the binaries included. From a clean
+working tree, run:
+
+```bash
+make release VERSION=1.3.2-custom
+```
+
+The release workflow updates `VERSION` and `internal/version/version.go`, runs
+`go test ./...`, builds `hypr-dock`, `hypr-dock-settings`, `hypr-dockctl`, and
+`hypr-alttab`, commits them, and pushes the current branch to `origin`.
+
 ### Dependencies
 
 - `go` (make)

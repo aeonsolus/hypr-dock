@@ -100,3 +100,7 @@ uninstall:
 
 exec:
 	./bin/hypr-dock -dev -log-level $(LOG_LEVEL)
+
+release:
+	@test -n "$(VERSION)" || (echo "usage: make release VERSION=1.3.2-custom"; exit 2)
+	./scripts/release.sh "$(VERSION)"
