@@ -5,6 +5,8 @@ import (
 	"strconv"
 
 	"github.com/gotk3/gotk3/gtk"
+
+	"hypr-dock/internal/pkg/utils"
 )
 
 // Shared control builders. Every widget reports through a setter that edits
@@ -81,6 +83,28 @@ func intScale(value, min, max, step float64, onChange func(int)) (*gtk.Box, *gtk
 // switchWidget builds a boolean switch.
 func switchWidget(value bool, onChange func(bool)) *gtk.Switch {
 	s, _ := gtk.SwitchNew()
+	s.SetName("compact-switch")
+	// Override theme defaults: some GTK themes make switches excessively wide.
+	utils.AddStyle(s, `
+switch#compact-switch {
+  min-width: 34px;
+  min-height: 18px;
+  padding: 0;
+  border-radius: 9px;
+}
+switch#compact-switch slider {
+  min-width: 14px;
+  min-height: 14px;
+  margin: 2px;
+  border-radius: 7px;
+}
+switch#compact-switch:checked {
+  background-color: rgba(120, 170, 255, 0.85);
+}
+switch#compact-switch:not(:checked) {
+  background-color: rgba(120, 130, 145, 0.35);
+}
+`)
 	s.SetActive(value)
 	s.Connect("notify::active", func() {
 		onChange(s.GetActive())
