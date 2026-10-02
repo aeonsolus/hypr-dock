@@ -61,7 +61,7 @@ func All(appState *state.State) {
 
 	seen := make(map[string]bool, len(list))
 	appendClass := func(className string) {
-		if className == "" || className == terminal.GroupClass || className == item.LauncherName || seen[className] {
+		if className == "" || className == item.LauncherName || seen[className] {
 			return
 		}
 		if it := list[className]; it != nil && !settings.IsHidden(className) {
@@ -82,7 +82,7 @@ func All(appState *state.State) {
 	if !launcherStart && settings.ShowLauncherButton {
 		final = append(final, item.LauncherName)
 	}
-	if list[terminal.GroupClass] != nil {
+	if list[terminal.GroupClass] != nil && !seen[terminal.GroupClass] {
 		final = append(final, terminal.GroupClass)
 	}
 

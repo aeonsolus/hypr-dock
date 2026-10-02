@@ -10,7 +10,6 @@ import (
 
 	layerinfo "hypr-dock/internal/layerInfo"
 	"hypr-dock/internal/pkg/pinned"
-	"hypr-dock/internal/terminal"
 	"hypr-dock/pkg/ipc"
 )
 
@@ -52,7 +51,7 @@ func DragActive() bool {
 
 // AttachDrag wires press/motion/release handlers on an item's button.
 func (i *Item) AttachDrag() {
-	if i == nil || i.Button == nil || i.IsTerminalGroup() {
+	if i == nil || i.Button == nil {
 		return
 	}
 
@@ -121,6 +120,12 @@ func finalizeDrag() {
 	}
 
 	item := dragState.item
+	if item.IsTerminalGroup() {
+		// Terminal Apps is synthetic, never a pin, but its absolute slot is
+		// user-controlled and must be persisted like any other dock item.
+		persistOrder()
+		return
+	}
 
 	if item.IsPinned() {
 		if pointerOutsideDock(item) {
@@ -272,8 +277,8 @@ func reorderUnderPointer(under *gtk.Button, x, y float64) {
 }
 
 // persistOrder writes the complete visible order so pinned apps retain the
-// absolute slots the user chose. The terminal group is always repositioned
-// separately by reorder.All and is never persisted as a movable item.
+// absolute slots the user chose. The terminal group is synthetic but its
+// chosen slot is persisted just like a normal item.
 func persistOrder() {
 	if dragBox == nil || dragState == nil || dragState.item == nil {
 		return
@@ -299,9 +304,7 @@ func persistOrder() {
 		}
 	}
 
-	order = slices.DeleteFunc(order, func(cn string) bool {
-		return cn == terminal.GroupClass || cn == LauncherName
-	})
+	order = slices.DeleteFunc(order, func(cn string) bool { return cn == LauncherName })
 	if slices.Equal(order, dragState.item.Settings.DockOrder) {
 		return
 	}
