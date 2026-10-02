@@ -102,7 +102,7 @@ func CycleWindows() error {
 // FocusCurrentOrLast hands focus back to Hyprland after parking an app in the
 // special minimize workspace.
 func FocusCurrentOrLast() error {
-	lua := `hl.dsp.focus({ target = "current_or_last" })`
+	lua := `hl.dsp.focus({ last = true })`
 	raw := "focuscurrentorlast"
 	_, err := dispatch(lua, raw)
 	return err
