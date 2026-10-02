@@ -99,6 +99,15 @@ func CycleWindows() error {
 	return err
 }
 
+// FocusCurrentOrLast hands focus back to Hyprland after parking an app in the
+// special minimize workspace.
+func FocusCurrentOrLast() error {
+	lua := `hl.dsp.focus({ target = "current_or_last" })`
+	raw := "focuscurrentorlast"
+	_, err := dispatch(lua, raw)
+	return err
+}
+
 // ActiveAddress returns the address of the currently focused window.
 func ActiveAddress() (string, error) {
 	client, err := GetActiveWindow()

@@ -105,9 +105,22 @@ func (c *Control) minimizeItem() {
 		if client.Workspace.Id < 1 {
 			continue
 		}
+		if err := ipc.MinimizeWindow(address); err != nil {
+			c.log.Warn("Unable to minimize window", "address", address, "error", err)
+			continue
+		}
 		i.MinimizeRestore[address] = client.Workspace.Id
-		ipc.MinimizeWindow(address)
 	}
+	_ = ipc.FocusCurrentOrLast()
+}
+
+func (c *Control) actuallyFocused() bool {
+	address, err := ipc.ActiveAddress()
+	if err != nil || address == "" {
+		return false
+	}
+	_, ok := c.item.Windows[address]
+	return ok
 }
 
 // applyRunning handles clicks on running-but-unfocused applications.
@@ -171,7 +184,7 @@ func (c *Control) Init() {
 			return
 		}
 
-		if c.item.Active {
+		if c.actuallyFocused() {
 			c.applyFocused()
 			return
 		}
