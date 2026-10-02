@@ -62,6 +62,16 @@ exec-once = hypr-dock
 bind = Super, D, exec, hypr-dock
 ```
 
+For Lua-based Hyprland configurations, copy
+`configs/default/hypr-dock.lua` to `~/.config/hypr/config/hypr-dock.lua` and
+add this line to `~/.config/hypr/hyprland.lua`:
+
+```lua
+require("config.hypr-dock")
+```
+
+That provides the macOS-style startup, `Super+D` toggle, and blur rules.
+
 ### And configure blur if needed
 ```text
 layerrule = blur true,match:namespace hypr-dock

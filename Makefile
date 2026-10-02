@@ -70,7 +70,18 @@ install-settings:
 
 update-config:
 	sudo -rf $(PROJECT_CONFIG_DIR)/. $(SYSTEM_CONFIG_DIR)/
-	@echo -e "$(GREEN)Configs copied to $(SYSTEM_CONFIG_DIR)$(RESET)
+	@echo -e "$(GREEN)Configs copied to $(SYSTEM_CONFIG_DIR)$(RESET)"
+
+# Deploy this fork's complete workstation defaults, including the current
+# theme, pins, absolute dock order, and Lua Hyprland integration.
+install-user-config:
+	mkdir -p $(HOME)/.config/hypr-dock $(HOME)/.config/hypr/config $(HOME)/.local/share/hypr-dock
+	cp -a $(PROJECT_CONFIG_DIR)/hypr-dock.conf $(HOME)/.config/hypr-dock/
+	cp -a $(PROJECT_CONFIG_DIR)/themes $(HOME)/.config/hypr-dock/
+	cp -a $(PROJECT_CONFIG_DIR)/pinned $(HOME)/.local/share/hypr-dock/
+	@if [ -f "$(PROJECT_CONFIG_DIR)/order" ]; then cp -a $(PROJECT_CONFIG_DIR)/order $(HOME)/.local/share/hypr-dock/; fi
+	cp -a $(PROJECT_CONFIG_DIR)/hypr-dock.lua $(HOME)/.config/hypr/config/
+	@echo -e "$(GREEN)User dock config, themes, pins, order, and Hyprland hook installed$(RESET)"
 
 install-all:
 	$(MAKE) install-dock
@@ -78,6 +89,7 @@ install-all:
 	$(MAKE) install-ctl
 	$(MAKE) install-settings
 	$(MAKE) update-config
+	$(MAKE) install-user-config
 
 uninstall:
 	sudo rm -f /usr/bin/$(EXECUTABLE_DOCK)
