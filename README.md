@@ -1,5 +1,5 @@
-# hypr-dock
-### Interactive dock panel for Hyprland
+# HyprDock+
+### Custom interactive dock panel for Hyprland
 
 Translations: [`Русский`](README_RU.md)
 

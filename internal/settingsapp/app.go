@@ -112,7 +112,7 @@ func ctlSocketHint() string {
 
 // build lays out sidebar + pages.
 func (a *App) build() {
-	a.window.SetTitle("Hypr-Dock Settings")
+	a.window.SetTitle("HyprDock+ Settings")
 	a.window.SetDefaultSize(880, 560)
 	a.window.SetResizable(true)
 	a.window.SetPosition(gtk.WIN_POS_CENTER)
@@ -131,7 +131,7 @@ func (a *App) build() {
 	sidebar.SetSizeRequest(170, -1)
 
 	title, _ := gtk.LabelNew("")
-	title.SetMarkup("<b>Hypr-Dock</b>\n<small>Settings</small>")
+	title.SetMarkup("<b>HyprDock+</b>\n<small>Settings</small>")
 	title.SetHAlign(gtk.ALIGN_START)
 	title.SetMarginBottom(10)
 	sidebar.PackStart(title, false, false, 0)
