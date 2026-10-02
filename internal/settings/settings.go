@@ -26,10 +26,12 @@ type Settings struct {
 	ConfigDir      string
 	ConfigPath     string
 	PinnedPath     string
+	OrderPath      string
 	ThemesDir      string
 	ThemeStyle     string
 	ThemeStyleHash string
 	PinnedApps     []string
+	DockOrder      []string
 }
 
 func Init(flags flags.Flags, log hclog.Logger) (*Settings, error) {
@@ -71,6 +73,8 @@ func Load(configPath, configDir, localDir string, log hclog.Logger) (*Settings, 
 	if err != nil {
 		log.Error("Failed to create/write pinned list", "file", pinnedPath, "error", err)
 	}
+	orderPath := filepath.Join(localDir, "order")
+	dockOrder, _ := pinned.Open(orderPath)
 
 	// themes dir
 	themesDir := filepath.Join(configDir, "themes")
@@ -95,10 +99,12 @@ func Load(configPath, configDir, localDir string, log hclog.Logger) (*Settings, 
 		ConfigDir:      configDir,
 		ConfigPath:     configPath,
 		PinnedPath:     pinnedPath,
+		OrderPath:      orderPath,
 		ThemesDir:      themesDir,
 		ThemeStyle:     themeStyle,
 		ThemeStyleHash: hashFile(themeStyle),
 		PinnedApps:     pinnedApps,
+		DockOrder:      dockOrder,
 	}, nil
 }
 

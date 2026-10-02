@@ -50,7 +50,8 @@ func All(appState *state.State) {
 		}
 	}
 
-	// Final order: launcher (start position) + pinned + running unpinned.
+	// Final order follows the persisted absolute order. New items are appended;
+	// the terminal group is always forced to the final slot.
 	final := make([]string, 0, len(list)+1)
 
 	launcherStart := settings.LauncherPosition == "start" && settings.ShowLauncherButton
@@ -58,21 +59,31 @@ func All(appState *state.State) {
 		final = append(final, item.LauncherName)
 	}
 
-	for _, className := range *appState.GetPinned() {
+	seen := make(map[string]bool, len(list))
+	appendClass := func(className string) {
+		if className == "" || className == terminal.GroupClass || className == item.LauncherName || seen[className] {
+			return
+		}
 		if it := list[className]; it != nil && !settings.IsHidden(className) {
+			seen[className] = true
 			final = append(final, className)
 		}
 	}
-
-	// Terminal emulator pins are represented by one stable synthetic item.
-	if list[terminal.GroupClass] != nil {
-		final = append(final, terminal.GroupClass)
+	for _, className := range settings.DockOrder {
+		appendClass(className)
 	}
-
-	final = append(final, unpinnedOrder...)
+	for _, className := range *appState.GetPinned() {
+		appendClass(className)
+	}
+	for _, className := range unpinnedOrder {
+		appendClass(className)
+	}
 
 	if !launcherStart && settings.ShowLauncherButton {
 		final = append(final, item.LauncherName)
+	}
+	if list[terminal.GroupClass] != nil {
+		final = append(final, terminal.GroupClass)
 	}
 
 	// Apply the order. Launcher children are the ones with no class match.

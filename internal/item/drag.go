@@ -10,6 +10,7 @@ import (
 
 	layerinfo "hypr-dock/internal/layerInfo"
 	"hypr-dock/internal/pkg/pinned"
+	"hypr-dock/internal/terminal"
 	"hypr-dock/pkg/ipc"
 )
 
@@ -51,7 +52,7 @@ func DragActive() bool {
 
 // AttachDrag wires press/motion/release handlers on an item's button.
 func (i *Item) AttachDrag() {
-	if i == nil || i.Button == nil {
+	if i == nil || i.Button == nil || i.IsTerminalGroup() {
 		return
 	}
 
@@ -270,9 +271,9 @@ func reorderUnderPointer(under *gtk.Button, x, y float64) {
 	}
 }
 
-// persistOrder writes the new relative order of pinned apps to disk so the
-// rearrangement survives a dock restart. Running (unpinned) apps keep their
-// session position but are not persisted.
+// persistOrder writes the complete visible order so pinned apps retain the
+// absolute slots the user chose. The terminal group is always repositioned
+// separately by reorder.All and is never persisted as a movable item.
 func persistOrder() {
 	if dragBox == nil || dragState == nil || dragState.item == nil {
 		return
@@ -298,31 +299,15 @@ func persistOrder() {
 		}
 	}
 
-	pinnedSet := make(map[string]bool, len(*dragState.item.PinnedList))
-	for _, cn := range *dragState.item.PinnedList {
-		pinnedSet[cn] = true
-	}
-
-	var pins []string
-	for _, cn := range order {
-		if pinnedSet[cn] {
-			pins = append(pins, cn)
-		}
-	}
-	// Keep any pinned app that is not currently rendered (e.g. hidden for some
-	// reason) at the end of the list.
-	for _, cn := range *dragState.item.PinnedList {
-		if !slices.Contains(pins, cn) {
-			pins = append(pins, cn)
-		}
-	}
-
-	if slices.Equal(pins, *dragState.item.PinnedList) {
+	order = slices.DeleteFunc(order, func(cn string) bool {
+		return cn == terminal.GroupClass || cn == LauncherName
+	})
+	if slices.Equal(order, dragState.item.Settings.DockOrder) {
 		return
 	}
 
-	*dragState.item.PinnedList = pins
-	if err := pinned.Save(dragState.item.Settings.PinnedPath, pins); err != nil {
-		dragState.item.log.Error("Failed to save pinned order", "file", dragState.item.Settings.PinnedPath, "error", err)
+	dragState.item.Settings.DockOrder = order
+	if err := pinned.Save(dragState.item.Settings.OrderPath, order); err != nil {
+		dragState.item.log.Error("Failed to save dock order", "file", dragState.item.Settings.OrderPath, "error", err)
 	}
 }
