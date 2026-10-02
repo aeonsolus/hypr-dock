@@ -44,13 +44,22 @@ func grid() *gtk.Grid {
 func addRow(grid *gtk.Grid, row int, label string, control gtk.IWidget, hint string) {
 	labelWidget, _ := gtk.LabelNew(label)
 	labelWidget.SetHAlign(gtk.ALIGN_START)
+	labelWidget.SetWidthChars(25)
+	labelWidget.SetMaxWidthChars(30)
+	labelWidget.SetLineWrap(true)
 	grid.Attach(labelWidget, 0, row, 1, 1)
+	grid.SetColumnHomogeneous(false)
+	grid.SetColumnSpacing(12)
 	grid.Attach(control, 1, row, 1, 1)
+	control.ToWidget().SetHExpand(true)
+	control.ToWidget().SetHAlign(gtk.ALIGN_FILL)
 
 	if hint != "" {
 		hintWidget, _ := gtk.LabelNew("")
 		hintWidget.SetMarkup("<small>" + hint + "</small>")
 		hintWidget.SetHAlign(gtk.ALIGN_START)
+		hintWidget.SetLineWrap(true)
+		hintWidget.SetMaxWidthChars(36)
 		grid.Attach(hintWidget, 2, row, 1, 1)
 	}
 }
@@ -84,6 +93,7 @@ func intScale(value, min, max, step float64, onChange func(int)) (*gtk.Box, *gtk
 func switchWidget(value bool, onChange func(bool)) *gtk.Switch {
 	s, _ := gtk.SwitchNew()
 	s.SetName("compact-switch")
+	s.SetHAlign(gtk.ALIGN_START)
 	// Override theme defaults: some GTK themes make switches excessively wide.
 	utils.AddStyle(s, `
 switch#compact-switch {

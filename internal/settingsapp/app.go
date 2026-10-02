@@ -114,9 +114,12 @@ func ctlSocketHint() string {
 func (a *App) build() {
 	a.window.SetTitle("Hypr-Dock Settings")
 	a.window.SetDefaultSize(880, 560)
+	a.window.SetResizable(true)
 	a.window.SetPosition(gtk.WIN_POS_CENTER)
 
 	outer, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 0)
+	outer.SetHExpand(true)
+	outer.SetVExpand(true)
 	a.window.Add(outer)
 
 	sidebar, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 2)
@@ -125,6 +128,7 @@ func (a *App) build() {
 	sidebar.SetMarginBottom(12)
 	sidebar.SetMarginStart(10)
 	sidebar.SetMarginEnd(6)
+	sidebar.SetSizeRequest(170, -1)
 
 	title, _ := gtk.LabelNew("")
 	title.SetMarkup("<b>Hypr-Dock</b>\n<small>Settings</small>")
@@ -135,6 +139,8 @@ func (a *App) build() {
 	stack, _ := gtk.StackNew()
 	stack.SetHExpand(true)
 	stack.SetVExpand(true)
+	stack.SetHAlign(gtk.ALIGN_FILL)
+	stack.SetVAlign(gtk.ALIGN_FILL)
 	stack.SetTransitionType(gtk.STACK_TRANSITION_TYPE_SLIDE_LEFT_RIGHT)
 	stack.SetMarginTop(12)
 	stack.SetMarginBottom(8)
