@@ -37,7 +37,7 @@ go build -o bin/hypr-dock-settings ./cmd/hypr-dock-settings
 go build -o bin/hypr-dockctl ./cmd/hypr-dockctl
 go build -o bin/hypr-alttab ./cmd/hypr-alttab
 
-git add VERSION internal/version/version.go
+git add -A
 git add -f bin/hypr-dock bin/hypr-dock-settings bin/hypr-dockctl bin/hypr-alttab
 git commit -m "release: HyprDock+ $version"
 git push origin HEAD
