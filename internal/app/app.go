@@ -126,6 +126,10 @@ func renderItems(appState *state.State) {
 
 	if settings.ShowPinnedApps {
 		for _, className := range *appState.GetPinned() {
+			// The recycle bin is a synthetic item, never a desktop-app pin.
+			if className == item.TrashName {
+				continue
+			}
 			// All terminal pins collapse into the synthetic Terminal Apps item.
 			if terminal.IsTerminalClass(className) {
 				continue
@@ -164,6 +168,9 @@ func InitNewItemInIPC(ipcClient ipc.Client, appState *state.State) {
 
 	if className == "" {
 		className = utils.NormaliseTitle(ipcClient.InitialTitle)
+	}
+	if className == item.TrashName {
+		return
 	}
 
 	// Blacklisted classes (tray/background apps) never get a dock icon.
