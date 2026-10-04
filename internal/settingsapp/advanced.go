@@ -2,8 +2,10 @@ package settingsapp
 
 import (
 	"os"
+	"os/exec"
 	"strings"
 
+	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
 
 	"hypr-dock/internal/diag"
@@ -47,6 +49,40 @@ func newAdvancedPage(app *App) gtk.IWidget {
 	cssButtons.PackStart(applyCss, false, false, 0)
 	page.PackStart(editing, true, true, 0)
 	page.PackStart(cssButtons, false, false, 0)
+
+	page.PackStart(sectionTitle("HyprDock+ updater"), false, false, 0)
+	page.PackStart(hintLabel("Pulls aeonsolus/hypr-dock using your authenticated gh account, rebuilds the four binaries, and installs them."), false, false, 0)
+	updateButton, _ := gtk.ButtonNewWithLabel("Check for updates and install")
+	updateButton.Connect("clicked", func() {
+		updateButton.SetSensitive(false)
+		app.SetStatus("Updating HyprDock+…")
+		go func() {
+			cmd := exec.Command("sh", "-c", `
+set -eu
+repo=/tmp/hyprdock-update
+if [ -d "$repo/.git" ]; then
+  git -C "$repo" fetch origin main
+  git -C "$repo" reset --hard origin/main
+else
+  rm -rf "$repo"
+  gh repo clone aeonsolus/hypr-dock "$repo" -- --depth=1
+fi
+cd "$repo"
+make build
+pkexec cp bin/hypr-dock bin/hypr-dock-settings bin/hypr-dockctl /usr/bin/
+`)
+			err := cmd.Run()
+			glib.IdleAdd(func() {
+				updateButton.SetSensitive(true)
+				if err != nil {
+					app.SetStatus("Update failed: " + err.Error())
+					return
+				}
+				app.SetStatus("Updated. Restart HyprDock+ to apply the new binary.")
+			})
+		}()
+	})
+	page.PackStart(updateButton, false, false, 0)
 
 	page.PackStart(sectionTitle("Diagnostics"), false, false, 0)
 

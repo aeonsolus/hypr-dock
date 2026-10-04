@@ -47,10 +47,29 @@ func BuildApp(appState *state.State) *gtk.Box {
 	appState.SetItemsBox(itemsBox)
 	item.InitDrag(itemsBox)
 	buildLauncher(appState)
+	buildTrash(appState)
 	renderItems(appState)
 	app.Add(itemsBox)
 
 	return app
+}
+
+func buildTrash(appState *state.State) {
+	list := appState.GetList()
+	if list.Get(item.TrashName) != nil {
+		return
+	}
+	trash, err := item.NewTrash(appState.GetSettings(), appState.GetLogger())
+	if err != nil {
+		appState.GetLogger().Error("Unable to create recycle bin", "error", err)
+		return
+	}
+	trash.List = list.GetMap()
+	trash.PinnedList = appState.GetPinned()
+	btnctl.Dispatch(trash, appState)
+	trash.AttachDrag()
+	list.Add(item.TrashName, trash)
+	appState.GetItemsBox().Add(trash.ButtonBox)
 }
 
 func InitTerminalGroup(appState *state.State) {

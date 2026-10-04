@@ -64,6 +64,13 @@ func NewTerminalGroup(settings *settings.Settings, log hclog.Logger) (*Item, err
 	return NewWithApp(terminal.GroupClass, app, settings, log)
 }
 
+const TrashName = "hypr-dock-trash"
+
+func NewTrash(settings *settings.Settings, log hclog.Logger) (*Item, error) {
+	app := desktop.NewVirtualWithExec("Recycle Bin", "user-trash", "gio open trash:///")
+	return NewWithApp(TrashName, app, settings, log)
+}
+
 func NewWithApp(className string, app *desktop.App, settings *settings.Settings, log hclog.Logger) (*Item, error) {
 	orientation := gtk.ORIENTATION_VERTICAL
 	switch settings.Position {

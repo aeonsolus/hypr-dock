@@ -29,11 +29,17 @@ type Action struct {
 }
 
 func NewVirtual(name, icon string) *App {
+	return NewVirtualWithExec(name, icon, "")
+}
+
+// NewVirtualWithExec creates a synthetic app with an explicit command. It is
+// used for dock integrations that have no .desktop entry (for example Trash).
+func NewVirtualWithExec(name, icon, command string) *App {
 	return &App{
 		name:         map[string]string{"": name},
 		comment:      map[string]string{"": name},
 		icon:         icon,
-		exec:         "",
+		exec:         command,
 		singleWindow: false,
 		actions:      []Action{},
 		raw:          make(map[string]map[string]string),
