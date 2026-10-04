@@ -70,6 +70,8 @@ func IsSystemApp(class string) bool {
 	return class == TrashName || class == "hypr-dock-home" || class == "hypr-dock-preferences"
 }
 
+func (i *Item) IsSystemItem() bool { return IsSystemApp(i.ClassName) }
+
 func NewTrash(settings *settings.Settings, log hclog.Logger) (*Item, error) {
 	app := desktop.NewVirtualWithExec("Recycle Bin", "user-trash", "gio open trash:///")
 	return NewWithApp(TrashName, app, settings, log)

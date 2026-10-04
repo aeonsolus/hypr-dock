@@ -2,4 +2,4 @@ package version
 
 // Version is the HyprDock+ release this fork tracks. Kept in a dedicated
 // package so doctor, ctl status and the settings app agree.
-const Version = "1.4.1-custom"
+const Version = "1.4.2-custom"

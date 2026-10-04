@@ -14,6 +14,7 @@ import (
 
 	"hypr-dock/internal/appearance"
 	"hypr-dock/internal/ctl"
+	"hypr-dock/internal/omarchy"
 	"hypr-dock/internal/pkg/pinned"
 	"hypr-dock/internal/pkg/utils"
 	"hypr-dock/internal/settings"
@@ -268,10 +269,9 @@ func (a *App) build() {
 	applicationsWidget, applicationsPage := newApplicationsPage(a)
 	a.appPage = applicationsPage
 
-	themeWidget, themePage := newThemePage(a)
+	themePage := &ThemePage{app: a}
 	a.themePage = themePage
 
-	_ = themeWidget
 	if a.selectedPage == "" {
 		a.selectedPage = "Appearance"
 	}
@@ -284,7 +284,26 @@ func (a *App) build() {
 	themeRow, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 8)
 	themeLabel, _ := gtk.LabelNew("Dock theme")
 	themeRow.PackStart(themeLabel, false, false, 0)
-	themeRow.PackStart(comboWidget(themeNames, a.config.CurrentTheme, func(v string) { a.config.CurrentTheme = v; a.Apply() }), true, true, 0)
+	themeCombo := comboWidget(themeNames, a.config.CurrentTheme, func(v string) { a.config.CurrentTheme = v; a.Apply() })
+	themeRow.PackStart(themeCombo, true, true, 0)
+	if omarchy.Detect() {
+		follow, _ := gtk.CheckButtonNewWithLabel("Follow desktop colors")
+		follow.SetActive(a.config.FollowOmarchy)
+		follow.Connect("toggled", func() {
+			a.config.FollowOmarchy = follow.GetActive()
+			if follow.GetActive() {
+				a.config.CurrentTheme = "omarchy"
+				for i, name := range themeNames {
+					if name == "omarchy" {
+						themeCombo.SetActive(i)
+						break
+					}
+				}
+			}
+			a.Apply()
+		})
+		themeRow.PackStart(follow, false, false, 0)
+	}
 	lookContent.PackStart(themeRow, false, false, 0)
 	lookContent.PackStart(compactColumns(newDockLayoutPage(a), newAppearancePage(a), newIndicatorsPage(a)), false, false, 0)
 	lookContent.PackStart(newStylesheetEditor(a), false, false, 0)

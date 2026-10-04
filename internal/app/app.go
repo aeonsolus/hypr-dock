@@ -211,6 +211,13 @@ func InitNewItemInIPC(ipcClient ipc.Client, appState *state.State) {
 	if className == "" {
 		className = utils.NormaliseTitle(ipcClient.InitialTitle)
 	}
+	if className == "hypr-dock-settings" && appState.GetSettings().ShowSettingsIcon {
+		if preferences := list.Get("hypr-dock-preferences"); preferences != nil {
+			preferences.AddWindow(ipcClient)
+			appState.GetWindow().ShowAll()
+		}
+		return
+	}
 	if item.IsSystemApp(className) {
 		return
 	}
@@ -271,7 +278,7 @@ func RemoveApp(address string, appState *state.State) {
 		return
 	}
 
-	if item.IsTerminalGroup() {
+	if item.IsTerminalGroup() || item.IsSystemItem() {
 		item.RemoveWindow(address)
 		appState.GetWindow().ShowAll()
 		return
