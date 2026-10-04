@@ -18,6 +18,7 @@ import (
 	"hypr-dock/internal/pkg/pinned"
 	"hypr-dock/internal/pkg/utils"
 	"hypr-dock/internal/settings"
+	"hypr-dock/internal/updater"
 )
 
 // Settings application for hypr-dock.
@@ -35,13 +36,19 @@ type App struct {
 	config *settings.Settings
 	pins   []string
 
-	status       *gtk.Label
-	selectedPage string
-	applyTimer   glib.SourceHandle
-	dark         bool
-	updating     bool
-	updateButton *gtk.Button
-	updateStatus *gtk.Label
+	status           *gtk.Label
+	selectedPage     string
+	applyTimer       glib.SourceHandle
+	dark             bool
+	updating         bool
+	updateButton     *gtk.Button
+	updateStatus     *gtk.Label
+	updateCheck      *gtk.Button
+	checkingUpdate   bool
+	installedVersion string
+	updateMessage    string
+	updateRelease    *updater.Release
+	updatePoll       glib.SourceHandle
 
 	// pages keep references so they can refresh (e.g. theme switch)
 	themePage *ThemePage
@@ -58,6 +65,14 @@ func New(window *gtk.Window, log hclog.Logger) *App {
 		log.Error("Preferences stylesheet", "error", err)
 	}
 	self.build()
+	self.checkUpdates()
+	self.updatePoll = glib.TimeoutAdd(10*60*1000, func() bool { self.checkUpdates(); return true })
+	window.Connect("destroy", func() {
+		if self.updatePoll != 0 {
+			glib.SourceRemove(self.updatePoll)
+			self.updatePoll = 0
+		}
+	})
 	window.Connect("delete-event", func() bool {
 		if self.applyTimer != 0 {
 			glib.SourceRemove(self.applyTimer)
