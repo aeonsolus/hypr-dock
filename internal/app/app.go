@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/gotk3/gotk3/gtk"
 
 	"hypr-dock/internal/btnctl"
+	"hypr-dock/internal/desktop"
 	"hypr-dock/internal/item"
 	"hypr-dock/internal/pkg/utils"
 	"hypr-dock/internal/reorder"
@@ -51,13 +53,37 @@ func BuildApp(appState *state.State) *gtk.Box {
 	item.InitDrag(itemsBox)
 	buildLauncher(appState)
 	buildTrash(appState)
+	if settings.ShowHomeFolder {
+		home, _ := os.UserHomeDir()
+		buildSystemApp(appState, "hypr-dock-home", "Home", "user-home", "gio open "+strconv.Quote(home))
+	}
+	if settings.ShowSettingsIcon {
+		buildSystemApp(appState, "hypr-dock-preferences", "Dock Preferences", "preferences-system", "hypr-dock-settings")
+	}
 	renderItems(appState)
 	app.Add(itemsBox)
 
 	return app
 }
 
+func buildSystemApp(appState *state.State, class, name, icon, command string) {
+	it, err := item.NewWithApp(class, desktop.NewVirtualWithExec(name, icon, command), appState.GetSettings(), appState.GetLogger())
+	if err != nil {
+		appState.GetLogger().Error("System app creation failed", "error", err)
+		return
+	}
+	it.List = appState.GetList().GetMap()
+	it.PinnedList = appState.GetPinned()
+	btnctl.Dispatch(it, appState)
+	it.AttachDrag()
+	appState.GetList().Add(class, it)
+	appState.GetItemsBox().Add(it.ButtonBox)
+}
+
 func buildTrash(appState *state.State) {
+	if !appState.GetSettings().ShowTrash {
+		return
+	}
 	list := appState.GetList()
 	if list.Get(item.TrashName) != nil {
 		return
@@ -70,18 +96,23 @@ func buildTrash(appState *state.State) {
 	trash.List = list.GetMap()
 	trash.PinnedList = appState.GetPinned()
 	btnctl.Dispatch(trash, appState)
-	trash.AttachDrag()
 	list.Add(item.TrashName, trash)
 	appState.GetItemsBox().Add(trash.ButtonBox)
-	go watchTrash(trash)
+	done := make(chan struct{})
+	trash.ButtonBox.Connect("destroy", func() { close(done) })
+	go watchTrash(trash, done)
 }
 
-func watchTrash(trash *item.Item) {
+func watchTrash(trash *item.Item, done <-chan struct{}) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return
 	}
-	filesDir := filepath.Join(home, ".local", "share", "Trash", "files")
+	dataHome := os.Getenv("XDG_DATA_HOME")
+	if dataHome == "" {
+		dataHome = filepath.Join(home, ".local", "share")
+	}
+	filesDir := filepath.Join(dataHome, "Trash", "files")
 	lastFull := false
 	for {
 		entries, _ := os.ReadDir(filesDir)
@@ -92,9 +123,20 @@ func watchTrash(trash *item.Item) {
 			if full {
 				icon = "user-trash-full"
 			}
-			glib.IdleAdd(func() { trash.SetIcon(icon) })
+			glib.IdleAdd(func() {
+				select {
+				case <-done:
+					return
+				default:
+					trash.SetIcon(icon)
+				}
+			})
 		}
-		time.Sleep(time.Second)
+		select {
+		case <-done:
+			return
+		case <-time.After(time.Second):
+		}
 	}
 }
 
@@ -127,7 +169,7 @@ func renderItems(appState *state.State) {
 	if settings.ShowPinnedApps {
 		for _, className := range *appState.GetPinned() {
 			// The recycle bin is a synthetic item, never a desktop-app pin.
-			if className == item.TrashName {
+			if item.IsSystemApp(className) {
 				continue
 			}
 			// All terminal pins collapse into the synthetic Terminal Apps item.
@@ -169,7 +211,7 @@ func InitNewItemInIPC(ipcClient ipc.Client, appState *state.State) {
 	if className == "" {
 		className = utils.NormaliseTitle(ipcClient.InitialTitle)
 	}
-	if className == item.TrashName {
+	if item.IsSystemApp(className) {
 		return
 	}
 

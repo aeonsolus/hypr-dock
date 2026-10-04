@@ -66,6 +66,10 @@ func NewTerminalGroup(settings *settings.Settings, log hclog.Logger) (*Item, err
 
 const TrashName = "hypr-dock-trash"
 
+func IsSystemApp(class string) bool {
+	return class == TrashName || class == "hypr-dock-home" || class == "hypr-dock-preferences"
+}
+
 func NewTrash(settings *settings.Settings, log hclog.Logger) (*Item, error) {
 	app := desktop.NewVirtualWithExec("Recycle Bin", "user-trash", "gio open trash:///")
 	return NewWithApp(TrashName, app, settings, log)
@@ -198,6 +202,9 @@ func (i *Item) IsPinned() bool {
 }
 
 func (i *Item) TogglePin() {
+	if IsSystemApp(i.ClassName) || i.IsTerminalGroup() {
+		return
+	}
 	list := i.PinnedList
 	className := i.ClassName
 
@@ -238,6 +245,9 @@ func (i *Item) TogglePin() {
 // landing spot). Running state is preserved; no duplicate icon is created
 // because the item identity is the class.
 func (i *Item) PinAt(position int) {
+	if IsSystemApp(i.ClassName) || i.IsTerminalGroup() {
+		return
+	}
 	list := i.PinnedList
 
 	if i.IsPinned() {

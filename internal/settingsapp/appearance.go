@@ -9,7 +9,7 @@ import (
 // existing layer surface; styling goes through the generated override CSS so
 // the user's style.css is never rewritten.
 
-func newAppearancePage(app *App) gtk.IWidget {
+func newDockLayoutPage(app *App) gtk.IWidget {
 	page := verticalPageBox()
 
 	page.PackStart(sectionTitle("Dock"), false, false, 0)
@@ -68,7 +68,11 @@ func newAppearancePage(app *App) gtk.IWidget {
 	row++
 
 	page.PackStart(dockGrid, false, false, 0)
+	return page
+}
 
+func newAppearancePage(app *App) gtk.IWidget {
+	page := verticalPageBox()
 	page.PackStart(sectionTitle("Panel"), false, false, 0)
 	panelGrid := grid()
 
@@ -124,7 +128,7 @@ func newAppearancePage(app *App) gtk.IWidget {
 
 	page.PackStart(panelGrid, false, false, 0)
 
-	page.PackStart(hintLabel("Panel overrides are applied at runtime and never rewrite your theme's style.css. Full CSS control lives in Advanced → Edit CSS."), false, false, 0)
+	page.PackStart(hintLabel("Panel adjustments preserve your theme stylesheet. For advanced changes, expand Custom stylesheet below."), false, false, 0)
 
-	return pageScroll(page)
+	return page
 }

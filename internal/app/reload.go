@@ -118,13 +118,24 @@ func Relayout(appState *state.State) {
 	if window == nil {
 		return
 	}
+	restore := make(map[string]map[string]int)
+	for class, it := range appState.GetList().GetMap() {
+		restore[class] = it.MinimizeRestore
+	}
 
 	if old := appState.GetAppBox(); old != nil {
 		window.Remove(old)
 		old.Destroy()
 	}
+	// The destroyed widgets must never be reused by synthetic-item lookup.
+	clear(appState.GetList().GetMap())
 
 	appBox := BuildApp(appState)
+	for class, it := range appState.GetList().GetMap() {
+		if saved := restore[class]; saved != nil {
+			it.MinimizeRestore = saved
+		}
+	}
 	appState.SetAppBox(appBox)
 	window.Add(appBox)
 	window.ShowAll()

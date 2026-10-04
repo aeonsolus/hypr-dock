@@ -107,18 +107,15 @@ func newBehaviorPage(app *App) gtk.IWidget {
 	crow++
 
 	page.PackStart(clickGrid, false, false, 0)
+	return page
+}
 
+func newLauncherPage(app *App) gtk.IWidget {
+	page := verticalPageBox()
 	page.PackStart(sectionTitle("Launcher"), false, false, 0)
 	launcherGrid := grid()
 
 	lrow := 0
-	launcherGrid.Attach(switchWidget(app.config.ShowLauncherButton, func(v bool) {
-		app.config.ShowLauncherButton = v
-		app.Apply()
-	}), 1, lrow, 1, 1)
-	addLabelRow(launcherGrid, lrow, "Show launcher button")
-	lrow++
-
 	launcherGrid.Attach(entryWidget(app.config.LauncherCommand, func(v string) {
 		app.config.LauncherCommand = v
 		app.Apply()
@@ -135,14 +132,19 @@ func newBehaviorPage(app *App) gtk.IWidget {
 
 	page.PackStart(launcherGrid, false, false, 0)
 
-	page.PackStart(hintLabel("“minimize” parks windows in the special workspace; clicking the icon again restores them to their original workspaces."), false, false, 0)
-
-	return pageScroll(page)
+	return page
 }
 
 // addLabelRow puts a right-aligned description label in a plain grid row.
 func addLabelRow(grid *gtk.Grid, row int, text string) {
 	label, _ := gtk.LabelNew(text)
 	label.SetHAlign(gtk.ALIGN_START)
+	label.SetXAlign(0)
+	label.SetLineWrap(true)
+	label.SetWidthChars(18)
+	label.SetMaxWidthChars(22)
 	grid.Attach(label, 0, row, 1, 1)
+	if control, err := grid.GetChildAt(1, row); err == nil && control != nil {
+		control.ToWidget().SetHExpand(true)
+	}
 }

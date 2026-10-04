@@ -6,7 +6,7 @@ import (
 
 // WindowsPage — preview popups and window indicators.
 
-func newWindowsPage(app *App) gtk.IWidget {
+func newIndicatorsPage(app *App) gtk.IWidget {
 	page := verticalPageBox()
 
 	page.PackStart(sectionTitle("Window Indicators"), false, false, 0)
@@ -28,7 +28,11 @@ func newWindowsPage(app *App) gtk.IWidget {
 	row++
 
 	page.PackStart(indGrid, false, false, 0)
+	return page
+}
 
+func newWindowsPage(app *App) gtk.IWidget {
+	page := verticalPageBox()
 	page.PackStart(sectionTitle("Window Previews"), false, false, 0)
 	pvGrid := grid()
 
@@ -79,5 +83,5 @@ func newWindowsPage(app *App) gtk.IWidget {
 
 	page.PackStart(hintLabel("static shows the last window frame; live streams window contents (experimental). Window capture happens only while a thumbnail is displayed."), false, false, 0)
 
-	return pageScroll(page)
+	return page
 }

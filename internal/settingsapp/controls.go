@@ -16,16 +16,20 @@ import (
 func sectionTitle(text string) gtk.IWidget {
 	label, _ := gtk.LabelNew("")
 	label.SetMarkup("<b>" + text + "</b>")
+	label.SetName("section-title")
 	label.SetHAlign(gtk.ALIGN_START)
-	label.SetMarginTop(10)
-	label.SetMarginBottom(4)
+	label.SetMarginTop(6)
+	label.SetMarginBottom(2)
 	return label
 }
 
 // hintLabel renders muted helper text.
 func hintLabel(text string) gtk.IWidget {
 	label, _ := gtk.LabelNew("")
-	label.SetMarkup("<small><i>" + text + "</i></small>")
+	label.SetText(text)
+	label.SetName("hint")
+	label.SetLineWrap(true)
+	label.SetMaxWidthChars(70)
 	label.SetHAlign(gtk.ALIGN_START)
 	label.SetMarginBottom(6)
 	return label
@@ -33,10 +37,11 @@ func hintLabel(text string) gtk.IWidget {
 
 func grid() *gtk.Grid {
 	grid, _ := gtk.GridNew()
-	grid.SetRowSpacing(8)
+	grid.SetName("settings-group")
+	grid.SetRowSpacing(6)
 	grid.SetColumnSpacing(12)
 	grid.SetMarginTop(4)
-	grid.SetMarginBottom(10)
+	grid.SetMarginBottom(4)
 	return grid
 }
 
@@ -44,23 +49,27 @@ func grid() *gtk.Grid {
 func addRow(grid *gtk.Grid, row int, label string, control gtk.IWidget, hint string) {
 	labelWidget, _ := gtk.LabelNew(label)
 	labelWidget.SetHAlign(gtk.ALIGN_START)
-	labelWidget.SetWidthChars(25)
-	labelWidget.SetMaxWidthChars(30)
+	labelWidget.SetXAlign(0)
+	labelWidget.SetWidthChars(18)
+	labelWidget.SetMaxWidthChars(22)
 	labelWidget.SetLineWrap(true)
-	grid.Attach(labelWidget, 0, row, 1, 1)
+	textBox, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 0)
+	textBox.SetVAlign(gtk.ALIGN_CENTER)
+	textBox.PackStart(labelWidget, false, false, 0)
+	grid.Attach(textBox, 0, row, 1, 1)
 	grid.SetColumnHomogeneous(false)
 	grid.SetColumnSpacing(12)
 	grid.Attach(control, 1, row, 1, 1)
 	control.ToWidget().SetHExpand(true)
 	control.ToWidget().SetHAlign(gtk.ALIGN_FILL)
+	if _, ok := control.(*gtk.Switch); ok {
+		control.ToWidget().SetHExpand(true)
+		control.ToWidget().SetHAlign(gtk.ALIGN_END)
+	}
 
 	if hint != "" {
-		hintWidget, _ := gtk.LabelNew("")
-		hintWidget.SetMarkup("<small>" + hint + "</small>")
-		hintWidget.SetHAlign(gtk.ALIGN_START)
-		hintWidget.SetLineWrap(true)
-		hintWidget.SetMaxWidthChars(36)
-		grid.Attach(hintWidget, 2, row, 1, 1)
+		labelWidget.SetTooltipText(hint)
+		control.ToWidget().SetTooltipText(hint)
 	}
 }
 
@@ -93,7 +102,8 @@ func intScale(value, min, max, step float64, onChange func(int)) (*gtk.Box, *gtk
 func switchWidget(value bool, onChange func(bool)) *gtk.Switch {
 	s, _ := gtk.SwitchNew()
 	s.SetName("compact-switch")
-	s.SetHAlign(gtk.ALIGN_START)
+	s.SetHAlign(gtk.ALIGN_END)
+	s.SetVAlign(gtk.ALIGN_CENTER)
 	// Override theme defaults: some GTK themes make switches excessively wide.
 	utils.AddStyle(s, `
 switch#compact-switch {
@@ -174,3 +184,55 @@ func verticalPageBox() *gtk.Box {
 }
 
 var _ = fmt.Sprintf
+
+// Place complete related groups into balanced columns, rather than one long
+// scrolling form. Widgets keep their original setters and ownership.
+func compactColumns(pages ...gtk.IWidget) gtk.IWidget {
+	root, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 14)
+	root.SetHomogeneous(true)
+	columns := make([]*gtk.Box, 2)
+	loads := make([]int, 2)
+	for n := range columns {
+		columns[n], _ = gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 2)
+		root.PackStart(columns[n], true, true, 0)
+	}
+	for _, page := range pages {
+		box := page.(*gtk.Box)
+		var group *gtk.Box
+		col := 0
+		for l := box.GetChildren(); l != nil && l.Data() != nil; l = l.Next() {
+			w, ok := l.Data().(gtk.IWidget)
+			if !ok {
+				continue
+			}
+			name, _ := w.ToWidget().GetName()
+			// Long explanatory paragraphs belong in tooltips in compact mode.
+			if name == "hint" {
+				label := &gtk.Label{Widget: *w.ToWidget()}
+				text, _ := label.GetText()
+				root.SetTooltipText(text)
+				continue
+			}
+			if group == nil || name == "section-title" {
+				col = 0
+				for n := 1; n < len(columns); n++ {
+					if loads[n] < loads[col] {
+						col = n
+					}
+				}
+				group, _ = gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 2)
+				columns[col].PackStart(group, false, false, 0)
+				loads[col] += 2
+			}
+			w.ToWidget().Ref()
+			box.Remove(w)
+			group.PackStart(w, false, false, 0)
+			w.ToWidget().Unref()
+			if name == "settings-group" {
+				container := &gtk.Container{Widget: *w.ToWidget()}
+				loads[col] += int(container.GetChildren().Length()) / 2
+			}
+		}
+	}
+	return root
+}

@@ -28,9 +28,12 @@ type General struct {
 	// Behavior: section membership and default visibility.
 	// ShowRecentApps stays false: the macOS-style Recent Applications
 	// section is opt-in only.
-	ShowPinnedApps  bool `def:"true"`
-	ShowRunningApps bool `def:"true"`
-	ShowRecentApps  bool `def:"false"`
+	ShowPinnedApps   bool `def:"true"`
+	ShowRunningApps  bool `def:"true"`
+	ShowRecentApps   bool `def:"false"`
+	ShowTrash        bool `def:"true"`
+	ShowHomeFolder   bool `def:"false"`
+	ShowSettingsIcon bool `def:"false"`
 
 	// Window indicators (running dots) and badge.
 	ShowWindowCount bool `def:"true"`

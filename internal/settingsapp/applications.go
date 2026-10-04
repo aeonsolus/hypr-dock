@@ -2,6 +2,7 @@ package settingsapp
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -10,27 +11,46 @@ import (
 	"github.com/hashicorp/go-hclog"
 
 	"hypr-dock/internal/desktop"
+	"hypr-dock/internal/pkg/pinned"
 	"hypr-dock/internal/pkg/utils"
 )
 
 // ApplicationsPage — graphical pinned application manager.
 
 type ApplicationsPage struct {
-	app   *App
-	rows  *gtk.Box
-	hints *gtk.Label
+	app    *App
+	rows   *gtk.Box
+	hints  *gtk.Label
+	picker *gtk.Box
 }
 
 func newApplicationsPage(app *App) (gtk.IWidget, *ApplicationsPage) {
 	page := &ApplicationsPage{app: app}
 
 	content := verticalPageBox()
+	outer, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 16)
+	outer.SetHomogeneous(true)
+	outer.PackStart(content, true, true, 0)
+	content.PackStart(sectionTitle("System apps"), false, false, 0)
+	systemGrid := grid()
+	addRow(systemGrid, 0, "Recycle Bin", switchWidget(app.config.ShowTrash, func(v bool) { app.config.ShowTrash = v; app.Apply() }), "Dock-owned; always the last item")
+	addRow(systemGrid, 1, "Application launcher", switchWidget(app.config.ShowLauncherButton, func(v bool) { app.config.ShowLauncherButton = v; app.Apply() }), "System launcher icon")
+	addRow(systemGrid, 2, "Home folder", switchWidget(app.config.ShowHomeFolder, func(v bool) { app.config.ShowHomeFolder = v; app.Apply() }), "Open your home folder")
+	addRow(systemGrid, 3, "Dock preferences", switchWidget(app.config.ShowSettingsIcon, func(v bool) { app.config.ShowSettingsIcon = v; app.Apply() }), "Open this configurator")
+	content.PackStart(systemGrid, false, false, 0)
+	content.PackStart(newLauncherPage(app), false, false, 0)
+	content = verticalPageBox()
+	outer.PackStart(content, true, true, 0)
 	content.PackStart(sectionTitle("Pinned Applications"), false, false, 0)
 	content.PackStart(hintLabel("Drag on the dock to reorder. Order changes here apply immediately to the running dock."), false, false, 0)
 
 	rows, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 0)
 	page.rows = rows
-	content.PackStart(rows, false, false, 0)
+	pinScroll, _ := gtk.ScrolledWindowNew(nil, nil)
+	pinScroll.SetPolicy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+	pinScroll.SetSizeRequest(-1, 150)
+	pinScroll.Add(rows)
+	content.PackStart(pinScroll, false, false, 0)
 
 	buttonsBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 8)
 	buttonsBox.SetMarginTop(10)
@@ -50,10 +70,16 @@ func newApplicationsPage(app *App) (gtk.IWidget, *ApplicationsPage) {
 	buttonsBox.PackStart(add, false, false, 0)
 	buttonsBox.PackStart(removeAll, false, false, 0)
 	content.PackStart(buttonsBox, false, false, 0)
+	page.picker, _ = gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 8)
+	page.picker.SetNoShowAll(true)
+	content.PackStart(page.picker, false, false, 0)
 
 	page.refresh()
+	content.PackStart(sectionTitle("Hidden applications"), false, false, 0)
+	content.PackStart(hintLabel("Hide these window classes from the dock. Separate with commas; wildcards such as scratch-* are supported."), false, false, 0)
+	content.PackStart(entryWidget(app.config.HiddenApps, func(v string) { app.config.HiddenApps = v; app.Apply() }), false, false, 0)
 
-	return content, page
+	return outer, page
 }
 
 func (p *ApplicationsPage) refresh() {
@@ -103,6 +129,8 @@ func (p *ApplicationsPage) buildRow(className string, index int) gtk.IWidget {
 	nameLabel, _ := gtk.LabelNew(name + "  (" + className + ")")
 	nameLabel.SetHAlign(gtk.ALIGN_START)
 	nameLabel.SetHExpand(true)
+	nameLabel.SetMaxWidthChars(35)
+	nameLabel.SetEllipsize(3)
 
 	up, _ := gtk.ButtonNewFromIconName("go-up-symbolic", gtk.ICON_SIZE_BUTTON)
 	up.SetRelief(gtk.RELIEF_NONE)
@@ -110,7 +138,7 @@ func (p *ApplicationsPage) buildRow(className string, index int) gtk.IWidget {
 		if index <= 0 {
 			return
 		}
-		p.app.pins[index-1], p.app.pins[index] = p.app.pins[index], p.app.pins[index-1]
+		p.swapPins(index, index-1)
 		p.app.SavePins()
 		p.refresh()
 	})
@@ -121,7 +149,7 @@ func (p *ApplicationsPage) buildRow(className string, index int) gtk.IWidget {
 		if index >= len(p.app.pins)-1 {
 			return
 		}
-		p.app.pins[index+1], p.app.pins[index] = p.app.pins[index], p.app.pins[index+1]
+		p.swapPins(index, index+1)
 		p.app.SavePins()
 		p.refresh()
 	})
@@ -147,16 +175,38 @@ func (p *ApplicationsPage) buildRow(className string, index int) gtk.IWidget {
 	return eventBox
 }
 
+// Respect absolute dock slots, including synthetic items, when moving pins.
+func (p *ApplicationsPage) swapPins(a, b int) {
+	order, err := pinned.Open(p.app.config.OrderPath)
+	if err == nil {
+		for _, class := range p.app.pins {
+			if !slices.Contains(order, class) {
+				order = append(order, class)
+			}
+		}
+		x, y := slices.Index(order, p.app.pins[a]), slices.Index(order, p.app.pins[b])
+		order[x], order[y] = order[y], order[x]
+		if err := pinned.Save(p.app.config.OrderPath, order); err != nil {
+			p.app.SetStatus("Could not save dock order: " + err.Error())
+			return
+		}
+	}
+	p.app.pins[a], p.app.pins[b] = p.app.pins[b], p.app.pins[a]
+}
+
 // showAddDialog lists all installed applications with a search filter.
 func (p *ApplicationsPage) showAddDialog() {
-	dialog, _ := gtk.DialogNewWithButtons(
-		"Add Application",
-		p.app.window,
-		gtk.DIALOG_DESTROY_WITH_PARENT,
-	)
-	dialog.SetDefaultSize(520, 480)
-
-	content, _ := dialog.GetContentArea()
+	if p.picker.GetVisible() {
+		p.picker.Hide()
+		return
+	}
+	children := p.picker.GetChildren()
+	for l := children; l != nil && l.Data() != nil; l = l.Next() {
+		if w, ok := l.Data().(gtk.IWidget); ok {
+			w.ToWidget().Destroy()
+		}
+	}
+	content := p.picker
 	content.SetMarginTop(10)
 	content.SetMarginBottom(10)
 	content.SetMarginStart(10)
@@ -169,6 +219,7 @@ func (p *ApplicationsPage) showAddDialog() {
 	scroll, _ := gtk.ScrolledWindowNew(nil, nil)
 	scroll.SetPolicy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
 	scroll.SetVExpand(true)
+	scroll.SetSizeRequest(-1, 150)
 	scroll.Add(list)
 	content.PackStart(scroll, true, true, 0)
 
@@ -192,10 +243,15 @@ func (p *ApplicationsPage) showAddDialog() {
 		button.Add(inner)
 
 		button.Connect("clicked", func() {
+			if slices.Contains(p.app.pins, catalogEntry.ID) {
+				return
+			}
 			p.app.pins = append(p.app.pins, catalogEntry.ID)
 			p.app.SavePins()
 			p.refresh()
+			button.SetSensitive(false)
 		})
+		button.SetSensitive(!slices.Contains(p.app.pins, catalogEntry.ID))
 
 		row.PackStart(button, false, false, 0)
 		list.Add(row)
@@ -210,11 +266,9 @@ func (p *ApplicationsPage) showAddDialog() {
 	}
 
 	list.ShowAll()
-	dialog.ShowAll()
-
-	dialog.Connect("response", func() {
-		dialog.Destroy()
-	})
+	content.SetNoShowAll(false)
+	content.ShowAll()
+	content.SetNoShowAll(true)
 }
 
 // CatalogEntry is one installable/pinnable application.

@@ -42,7 +42,7 @@ func newThemePage(app *App) (gtk.IWidget, *ThemePage) {
 
 	page.refresh()
 
-	return pageScroll(content), page
+	return content, page
 }
 
 func (p *ThemePage) widget() gtk.IWidget {

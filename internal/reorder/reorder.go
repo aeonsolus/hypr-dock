@@ -61,7 +61,7 @@ func All(appState *state.State) {
 
 	seen := make(map[string]bool, len(list))
 	appendClass := func(className string) {
-		if className == "" || className == item.LauncherName || seen[className] {
+		if className == "" || className == item.LauncherName || className == item.TrashName || seen[className] {
 			return
 		}
 		if it := list[className]; it != nil && !settings.IsHidden(className) {
@@ -84,6 +84,9 @@ func All(appState *state.State) {
 	}
 	if list[terminal.GroupClass] != nil && !seen[terminal.GroupClass] {
 		final = append(final, terminal.GroupClass)
+	}
+	if list[item.TrashName] != nil {
+		final = append(final, item.TrashName)
 	}
 
 	// Apply the order. Launcher children are the ones with no class match.

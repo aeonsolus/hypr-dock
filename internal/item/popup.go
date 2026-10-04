@@ -65,7 +65,7 @@ func (i *Item) ContextMenu() (*gtk.Menu, error) {
 		AddWindowsItemToMenu(menu, i.Windows, app, i.log)
 	}
 
-	if !i.IsTerminalGroup() {
+	if !i.IsTerminalGroup() && !IsSystemApp(i.ClassName) {
 		pinMenuItem, err := BuildPinMenuItem(i)
 		if err == nil {
 			menu.Append(pinMenuItem)

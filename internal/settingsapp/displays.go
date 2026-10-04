@@ -41,5 +41,5 @@ func newDisplaysPage(app *App) gtk.IWidget {
 
 	page.PackStart(hintLabel("“all displays” needs multiple dock instances and is reserved for a future release. With FollowMouse enabled the dock tracks the cursor and overrides this selection."), false, false, 0)
 
-	return pageScroll(page)
+	return page
 }

@@ -273,6 +273,9 @@ func reorderUnderPointer(under *gtk.Button, x, y float64) {
 	}
 	if cur >= 0 && target != cur {
 		dragBox.ReorderChild(dragState.item.ButtonBox, target)
+		if trash := dragState.item.List[TrashName]; trash != nil {
+			dragBox.ReorderChild(trash.ButtonBox, -1)
+		}
 	}
 }
 
@@ -304,7 +307,7 @@ func persistOrder() {
 		}
 	}
 
-	order = slices.DeleteFunc(order, func(cn string) bool { return cn == LauncherName })
+	order = slices.DeleteFunc(order, func(cn string) bool { return cn == LauncherName || cn == TrashName })
 	if slices.Equal(order, dragState.item.Settings.DockOrder) {
 		return
 	}
