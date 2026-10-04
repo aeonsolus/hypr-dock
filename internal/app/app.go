@@ -2,9 +2,12 @@ package app
 
 import (
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
+	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
 
 	"hypr-dock/internal/btnctl"
@@ -70,6 +73,29 @@ func buildTrash(appState *state.State) {
 	trash.AttachDrag()
 	list.Add(item.TrashName, trash)
 	appState.GetItemsBox().Add(trash.ButtonBox)
+	go watchTrash(trash)
+}
+
+func watchTrash(trash *item.Item) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	filesDir := filepath.Join(home, ".local", "share", "Trash", "files")
+	lastFull := false
+	for {
+		entries, _ := os.ReadDir(filesDir)
+		full := len(entries) > 0
+		if full != lastFull {
+			lastFull = full
+			icon := "user-trash"
+			if full {
+				icon = "user-trash-full"
+			}
+			glib.IdleAdd(func() { trash.SetIcon(icon) })
+		}
+		time.Sleep(time.Second)
+	}
 }
 
 func InitTerminalGroup(appState *state.State) {

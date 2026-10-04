@@ -174,6 +174,21 @@ func (i *Item) AddWindow(ipcClient ipc.Client) {
 	}
 }
 
+// SetIcon replaces the item's icon while keeping its fixed icon cell size.
+func (i *Item) SetIcon(iconName string) {
+	if i == nil || i.Button == nil || i.Settings == nil {
+		return
+	}
+	image, err := utils.CreateImage(iconName, i.Settings.IconSize)
+	if err != nil {
+		return
+	}
+	image.SetSizeRequest(i.Settings.IconSize, i.Settings.IconSize)
+	image.SetHAlign(gtk.ALIGN_CENTER)
+	image.SetVAlign(gtk.ALIGN_CENTER)
+	i.Button.SetImage(image)
+}
+
 func (i *Item) IsTerminalGroup() bool {
 	return i.ClassName == terminal.GroupClass
 }
